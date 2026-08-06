@@ -1,8 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
+import { Pressable } from "react-native";
 import { colors, tap } from "../../lib/theme";
 
 export default function TabsLayout() {
+  const router = useRouter();
   return (
     <Tabs
       screenOptions={{
@@ -28,6 +30,15 @@ export default function TabsLayout() {
         options={{
           title: "Log",
           tabBarIcon: ({ color, size }) => <Ionicons name="today-outline" color={color} size={size} />,
+          headerRight: () => (
+            <Pressable
+              onPress={() => router.push("/settings")}
+              hitSlop={12}
+              style={{ paddingHorizontal: 16 }}
+            >
+              <Ionicons name="ellipsis-horizontal" size={22} color={colors.textDim} />
+            </Pressable>
+          ),
         }}
       />
       <Tabs.Screen

@@ -52,6 +52,7 @@ export default function RootLayout() {
           name="log"
           options={{ presentation: "modal", title: "Log", animation: "slide_from_bottom" }}
         />
+        <Stack.Screen name="settings" options={{ title: "Settings" }} />
         <Stack.Screen name="session/[id]" options={{ title: "Session" }} />
         <Stack.Screen name="movement/[id]" options={{ title: "" }} />
       </Stack>

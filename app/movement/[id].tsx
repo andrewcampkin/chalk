@@ -3,8 +3,9 @@ import { useLocalSearchParams, useRouter, useNavigation } from "expo-router";
 import { useEffect, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { eq } from "drizzle-orm";
-import { blocksForMovement, feelHistory, repMaxes } from "../../db/queries";
+import { blocksForMovement, feelHistory, repMaxes, topSetsOverTime } from "../../db/queries";
 import { FeelDot } from "../../components/Feel";
+import { LoadChart, type LoadPoint } from "../../components/LoadChart";
 import { movements as movementsTable } from "../../db/schema";
 import { formatScore, type Unit } from "../../db/score";
 import { db } from "../../lib/db";
@@ -29,6 +30,7 @@ export default function MovementDetail() {
   const [maxes, setMaxes] = useState<RepMax[]>([]);
   const [rows, setRows] = useState<Appearance[]>([]);
   const [rated, setRated] = useState<{ date: string; feel: number | null }[]>([]);
+  const [loads, setLoads] = useState<LoadPoint[]>([]);
 
   const movementId = Number(id);
 
@@ -43,6 +45,7 @@ export default function MovementDetail() {
     repMaxes(db, movementId).then((r) => setMaxes(r as RepMax[])).catch(() => {});
     blocksForMovement(db, movementId).then((r) => setRows(r as Appearance[])).catch(() => {});
     feelHistory(db, movementId, 24).then(setRated).catch(() => {});
+    topSetsOverTime(db, movementId).then((r) => setLoads(r as LoadPoint[])).catch(() => {});
   }, [movementId, nav]);
 
   return (
@@ -71,6 +74,13 @@ export default function MovementDetail() {
                 />
               </>
             )}
+            {loads.length > 1 && (
+              <>
+                <Text style={st.label}>Top set over time</Text>
+                <LoadChart points={loads} unit={unit} />
+              </>
+            )}
+
             {rated.length > 1 && (
               <>
                 <Text style={st.label}>How it has felt</Text>

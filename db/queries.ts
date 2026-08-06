@@ -161,10 +161,24 @@ export async function repMaxes(db: DB, movementId: number) {
   `);
 }
 
-/** Every working set of a movement over time, for the progress chart. */
+/**
+ * Top working set per session, oldest first — the progress chart.
+ *
+ * Carries `feel` so each point can be coloured by how that day went. A load
+ * that stopped moving while the rating slid is a different problem from one
+ * that stalled while everything still felt fine.
+ */
 export async function topSetsOverTime(db: DB, movementId: number, limit = 200) {
-  return db.all<{ date: string; loadG: number; reps: number }>(sql`
-    select s.date as date, max(bm.load_g) as loadG, bm.reps as reps
+  return db.all<{
+    date: string;
+    loadG: number;
+    reps: number | null;
+    feel: number | null;
+  }>(sql`
+    select s.date          as date,
+           max(bm.load_g)  as loadG,
+           bm.reps         as reps,
+           b.feel          as feel
     from block_movements bm
     join blocks b   on b.id = bm.block_id
     join sessions s on s.id = b.session_id

@@ -139,7 +139,8 @@ Break these and the data goes quietly wrong, which is worse than a crash.
 5. ~~**PRs.**~~ Done bar the chart. `PrToast` shows the record at the moment it
    is set.
 6. ~~**Activity.**~~ Done. Weekly split, modality mix, neglect list.
-7. **Export.** Not started. See "Still to do".
+7. ~~**Export.**~~ Done. `lib/export.ts` builds the document, `app/settings.tsx`
+   writes it to the cache dir and hands it to the share sheet.
 
 Later, only if it earns its place: rest timer, a paste-parser that pre-tags
 movements from crossfit.com text, plate-loading calculator, Health write.
@@ -168,11 +169,22 @@ movements from crossfit.com text, plate-loading calculator, Health write.
   work, which is job 2. The old objection (inflated volume when scaled) died
   with the Rx concept.
 
+## The export format
+
+`lib/export.ts`. Nested, self-describing, and deliberately free of foreign
+keys — every movement reference carries its slug and display name, because this
+is the file you open in three years possibly without the app. The 156 seeded
+movements are not exported; only the user's own additions.
+
+`prs` is **not** exported. It is a cache (invariant 3) and must be rebuilt with
+`rebuildAllPrs()`, never restored — exporting it would create a second source of
+truth able to disagree with the blocks it came from.
+
 ## Still to do
 
-- **JSON export to the share sheet** (step 7). `expo-sharing` and
-  `expo-file-system` are already installed. Do this before it holds real data.
-- **Per-movement progress chart.** `topSetsOverTime()` in `queries.ts` is
-  written and unused; `react-native-gifted-charts` is installed.
+- **Import.** Export exists; nothing reads the file back. When writing it, seed
+  first, insert sessions/blocks/sets, then `rebuildAllPrs()` — never trust a
+  `prs` block in the file.
 - **Nothing has run on a physical device yet.** Bundle, typecheck and tests are
-  green; on-device behaviour is unverified.
+  green; on-device behaviour is unverified. The load chart in particular has
+  never been rendered — its axis scaling needs a real look.

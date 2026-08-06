@@ -147,4 +147,6 @@ there is no sixth table.
 v1, and in use. Not published anywhere and not intended to be — it is a
 single-user app with a single user.
 
-Still to do: reading a backup back in (export exists, import does not).
+Backup and restore both work: export writes a self-describing JSON file, and
+restore reads one back, rebuilding records from the workouts rather than
+trusting the file.

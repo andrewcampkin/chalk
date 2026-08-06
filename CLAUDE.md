@@ -191,11 +191,30 @@ movements are not exported; only the user's own additions.
 `rebuildAllPrs()`, never restored — exporting it would create a second source of
 truth able to disagree with the blocks it came from.
 
+## Restore
+
+`lib/import.ts`. A restore, not a merge: it replaces the log. Merging would
+have to decide whether a session on the same date is the same session, and
+getting that wrong silently duplicates history.
+
+Two things it must keep doing:
+
+- **Validate everything before writing anything.** Failing partway through
+  leaves a log that is neither the old one nor the new one.
+- **Never restore `prs`.** It is rebuilt from the blocks afterwards, so a stale
+  or hand-edited records block in a file cannot become a second source of
+  truth (invariant 3).
+
+Benchmarks are looked up, never created — inventing a "Fran" that is not the
+real one would break every search relying on it. Movements the install has
+never seen *are* created, flagged `isCustom`, or a backup from another phone
+would not restore complete.
+
+Export is at version 2. Version 1 stored `benchmark` as a bare display name;
+v2 stores `{ slug, name }`. Import still reads v1.
+
 ## Still to do
 
-- **Import.** Export exists; nothing reads the file back. When writing it, seed
-  first, insert sessions/blocks/sets, then `rebuildAllPrs()` — never trust a
-  `prs` block in the file.
 - **The load chart has never been rendered with real data.** It needs two or
   more sessions of the same lift before it draws at all. Its axis scaling
   (`yAxisOffset` plus a derived `maxValue`) is the part most likely to look

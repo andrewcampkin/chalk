@@ -105,7 +105,9 @@ describe("export", () => {
     const doc = await buildExportDoc(db);
     const wod = doc.sessions[0].blocks[1];
 
-    expect(wod.benchmark).toBe("Fran");
+    // Carries the stable slug as well as the display name, so a restore can
+    // re-tag the benchmark even if the name is later edited.
+    expect(wod.benchmark).toEqual({ slug: "fran", name: "Fran" });
     expect(wod.movements.map((m) => m.slug)).toEqual(["thruster", "pull-up"]);
     expect(wod.movements.map((m) => m.name)).toEqual(["Thruster", "Pull-up"]);
     // No numeric ids anywhere in the serialised form.

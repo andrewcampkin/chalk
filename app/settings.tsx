@@ -1,3 +1,4 @@
+import * as DocumentPicker from "expo-document-picker";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { useCallback, useEffect, useState } from "react";
@@ -7,6 +8,7 @@ import { Button, Chip, ChipRow } from "../components/ui";
 import { db } from "../lib/db";
 import { useDraft } from "../lib/draft";
 import { buildExportDoc, exportFilename } from "../lib/export";
+import { currentLogSize, importBackup, parseBackup } from "../lib/import";
 import { loadSampleData, removeSampleData, sampleDataCount } from "../lib/sample";
 import { colors, radius, space, type as t } from "../lib/theme";
 
@@ -26,6 +28,60 @@ export default function Settings() {
   }, []);
 
   useEffect(refresh, [refresh]);
+
+  /**
+   * Pick a file, validate it completely, show what is about to be lost, and
+   * only then write. The confirmation names both sides, because a restore is
+   * the one action here that destroys data.
+   */
+  const onRestore = async () => {
+    if (busy) return;
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({
+        type: ["application/json", "text/plain", "*/*"],
+        copyToCacheDirectory: true,
+      });
+      if (picked.canceled || !picked.assets?.[0]) return;
+
+      const file = new File(picked.assets[0].uri);
+      const parsed = parseBackup(await file.text());
+
+      if (!parsed.ok) {
+        Alert.alert("Cannot read that file", parsed.errors.slice(0, 6).join("\n\n"));
+        return;
+      }
+
+      const incoming = parsed.doc.counts?.sessions ?? parsed.doc.sessions.length;
+      const current = await currentLogSize(db);
+
+      Alert.alert(
+        "Replace everything logged?",
+        `The backup holds ${incoming} ${incoming === 1 ? "session" : "sessions"}.\n\n` +
+          `This deletes the ${current.sessions} ${current.sessions === 1 ? "session" : "sessions"} ` +
+          `currently on this phone and cannot be undone.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Replace",
+            style: "destructive",
+            onPress: () =>
+              withBusy(async () => {
+                const summary = await importBackup(db, parsed.doc);
+                Alert.alert(
+                  "Restored",
+                  `${summary.sessions} sessions, ${summary.blocks} blocks.` +
+                    (summary.movementsCreated
+                      ? `\n${summary.movementsCreated} movement(s) added that this install did not have.`
+                      : ""),
+                );
+              }),
+          },
+        ],
+      );
+    } catch (e: any) {
+      Alert.alert("Restore failed", String(e?.message ?? e));
+    }
+  };
 
   const withBusy = async (fn: () => Promise<void>) => {
     if (busy) return;
@@ -103,6 +159,23 @@ export default function Settings() {
           label={busy ? "Preparing…" : "Export a backup"}
           onPress={onExport}
           disabled={busy}
+          style={{ marginTop: space.md }}
+        />
+      </View>
+
+      <Text style={st.label}>Restore</Text>
+      <View style={st.card}>
+        <Text style={[st.note, st.noteFlush]}>
+          Reads a backup file back in. This replaces everything currently
+          logged, rather than merging — a backup answers "put it back how it
+          was". Records are rebuilt from the workouts, never taken from the
+          file.
+        </Text>
+        <Button
+          label={busy ? "Working…" : "Restore from a backup"}
+          variant="ghost"
+          disabled={busy}
+          onPress={onRestore}
           style={{ marginTop: space.md }}
         />
       </View>

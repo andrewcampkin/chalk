@@ -4,7 +4,14 @@ import { blockMovements, blocks, movements, sessions } from "../db/schema";
 
 type DB = BaseSQLiteDatabase<any, any, any>;
 
-export const EXPORT_VERSION = 1;
+/**
+ * 1 — original.
+ * 2 — `benchmark` became { slug, name } instead of a bare display name. The
+ *     slug is the stable machine key; a display name can be edited, and a
+ *     restore that silently failed to re-tag Fran would be worse than one that
+ *     refused to run. Import still accepts version 1.
+ */
+export const EXPORT_VERSION = 2;
 
 /**
  * The backup format.
@@ -45,7 +52,7 @@ export type ExportBlock = {
   position: number;
   kind: "strength" | "wod";
   title: string | null;
-  benchmark: string | null;
+  benchmark: { slug: string; name: string } | null;
   /** Invariant 1: the verbatim record. The one field that must never be lost. */
   rawText: string;
   format: string;
@@ -102,7 +109,9 @@ export async function buildExportDoc(db: DB, now = new Date()): Promise<ExportDo
     .orderBy(asc(blockMovements.position), asc(blockMovements.setNumber));
 
   const allMovements = await db.select().from(movements);
-  const nameById = new Map<number, string>(allMovements.map((m: any) => [m.id, m.name]));
+  const refById = new Map<number, { slug: string; name: string }>(
+    allMovements.map((m: any) => [m.id, { slug: m.slug, name: m.name }]),
+  );
 
   const setsByBlock = new Map<number, any[]>();
   for (const r of setRows) {
@@ -127,7 +136,7 @@ export async function buildExportDoc(db: DB, now = new Date()): Promise<ExportDo
         position: b.position,
         kind: b.kind,
         title: b.title,
-        benchmark: b.benchmarkId != null ? (nameById.get(b.benchmarkId) ?? null) : null,
+        benchmark: b.benchmarkId != null ? (refById.get(b.benchmarkId) ?? null) : null,
         rawText: b.rawText,
         format: b.format,
         score: {

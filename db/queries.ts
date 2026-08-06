@@ -78,6 +78,7 @@ export async function blocksForMovement(db: DB, movementId: number, limit = 100)
       scoreRounds: blocks.scoreRounds,
       scoreReps: blocks.scoreReps,
       capped: blocks.capped,
+      feel: blocks.feel,
       /** Heaviest working set of this movement in the block. */
       topLoadG: sql<number | null>`max(
         case when ${blockMovements.isWarmup} = 0 and ${blockMovements.isFailed} = 0
@@ -448,16 +449,40 @@ export async function recentSessions(db: DB, limit = 60) {
     label: string | null;
     blockCount: number;
     summary: string | null;
+    feels: string | null;
+    avgFeel: number | null;
   }>(sql`
     select s.id                        as id,
            s.date                      as date,
            s.label                     as label,
            count(b.id)                 as blockCount,
-           group_concat(b.title, ' · ') as summary
+           group_concat(b.title, ' · ') as summary,
+           group_concat(coalesce(b.feel, 0)) as feels,
+           avg(b.feel)                 as avgFeel
     from sessions s
     left join blocks b on b.session_id = s.id
     group by s.id
     order by s.date desc, s.id desc
+    limit ${limit}
+  `);
+}
+
+/**
+ * How a movement has felt over time, alongside how it went.
+ *
+ * The point of pairing them: a load that stopped moving while the rating slid
+ * from Strong to Flat is a different story from one that stalled while it still
+ * felt fine, and only one of those is a programming problem.
+ */
+export async function feelHistory(db: DB, movementId: number, limit = 60) {
+  return db.all<{ date: string; feel: number | null; title: string | null }>(sql`
+    select s.date as date, b.feel as feel, b.title as title
+    from block_movements bm
+    join blocks b   on b.id = bm.block_id
+    join sessions s on s.id = b.session_id
+    where bm.movement_id = ${movementId} and b.feel is not null
+    group by b.id
+    order by s.date desc
     limit ${limit}
   `);
 }

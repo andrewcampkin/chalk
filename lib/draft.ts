@@ -58,6 +58,8 @@ export type Draft = {
   scoreRounds: number | null;
   scoreReps: number | null;
   capped: boolean;
+  /** 1-5, optional. See lib/feel.ts. */
+  feel: number | null;
   notes: string;
 };
 
@@ -94,6 +96,7 @@ function emptyDraft(kind: "strength" | "wod", date: string): Draft {
     scoreRounds: null,
     scoreReps: null,
     capped: false,
+    feel: null,
     notes: "",
   };
 }

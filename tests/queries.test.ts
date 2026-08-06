@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   blocksForMovement,
+  feelHistory,
   ftsQuery,
   rebuildAllPrs,
   recomputePrsForBlock,
@@ -210,6 +211,54 @@ describe("movement history (not just PRs)", () => {
     const rows = await blocksForMovement(db, pullup);
     expect(rows).toHaveLength(1);
     expect(rows[0].date).toBe("2026-07-04");
+  });
+});
+
+describe("feel rating", () => {
+  it("is per block, so one session can hold different ratings", async () => {
+    const bs = await idOf("back-squat");
+    const run = await idOf("run");
+    const [s] = await db.insert(sessions).values({ date: "2026-07-10" }).returning();
+
+    const [squat] = await db
+      .insert(blocks)
+      .values({ sessionId: s.id, kind: "strength", format: "sets", rawText: "squats", scoreType: "load", feel: 1 })
+      .returning();
+    const [metcon] = await db
+      .insert(blocks)
+      .values({ sessionId: s.id, kind: "wod", format: "for_time", rawText: "run", scoreType: "time", feel: 5 })
+      .returning();
+    await db.insert(blockMovements).values([
+      { blockId: squat.id, movementId: bs, setNumber: 1, loadG: 100_000, reps: 5 },
+      { blockId: metcon.id, movementId: run, distanceM: 5000 },
+    ]);
+
+    // Weak squats, great running — the exact case the rating exists for.
+    expect((await blocksForMovement(db, bs))[0].feel).toBe(1);
+    expect((await blocksForMovement(db, run))[0].feel).toBe(5);
+  });
+
+  it("stays optional and never touches PR logic", async () => {
+    const sn = await idOf("snatch");
+    await logSet("2026-08-01", sn, 70_000, 1); // logged with no rating at all
+
+    const [pr] = await db.select().from(prs).where(eq(prs.movementId, sn));
+    expect(pr.value).toBe(70_000);
+    expect((await blocksForMovement(db, sn))[0].feel).toBeNull();
+  });
+
+  it("reports feel history newest first", async () => {
+    const bs = await idOf("back-squat");
+    for (const [date, feel] of [["2026-05-01", 2], ["2026-05-08", 4]] as const) {
+      const [s] = await db.insert(sessions).values({ date }).returning();
+      const [b] = await db
+        .insert(blocks)
+        .values({ sessionId: s.id, kind: "strength", format: "sets", rawText: "sq", scoreType: "load", feel })
+        .returning();
+      await db.insert(blockMovements).values({ blockId: b.id, movementId: bs, setNumber: 1, loadG: 100_000, reps: 3 });
+    }
+    const hist = await feelHistory(db, bs);
+    expect(hist.map((h: any) => h.feel)).toEqual([4, 2]);
   });
 });
 

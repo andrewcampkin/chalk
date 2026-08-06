@@ -3,6 +3,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { Button, Empty, s as ui } from "../../components/ui";
+import { FeelDot } from "../../components/Feel";
 import { recentSessions } from "../../db/queries";
 import { db } from "../../lib/db";
 import { todayIso, useDraft } from "../../lib/draft";
@@ -73,6 +74,15 @@ function SessionRow({ row, onPress }: { row: Row; onPress: () => void }) {
           {row.blockCount} {row.blockCount === 1 ? "block" : "blocks"}
         </Text>
       </View>
+      {/* One dot per block, in order — how the day actually went, at a glance. */}
+      <View style={st.dots}>
+        {String(row.feels ?? "")
+          .split(",")
+          .filter(Boolean)
+          .map((f: string, i: number) => (
+            <FeelDot key={i} feel={Number(f) || null} size={8} />
+          ))}
+      </View>
     </Pressable>
   );
 }
@@ -123,4 +133,5 @@ const st = StyleSheet.create({
   rowMon: { color: colors.textFaint, fontSize: t.tiny, fontWeight: "700", letterSpacing: 0.8 },
   rowTitle: { color: colors.text, fontSize: t.body, fontWeight: "600" },
   rowMeta: { color: colors.textFaint, fontSize: t.label, marginTop: 2 },
+  dots: { flexDirection: "row", gap: 4, alignItems: "center" },
 });

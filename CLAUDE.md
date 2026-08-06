@@ -61,6 +61,7 @@ db/
                      by lib/db.ts on every launch, outside drizzle's journal)
 lib/
   db.ts              opens the database, migrates, applies FTS, seeds once
+  feel.ts            the 1-5 "felt like" scale and its red->green ramp
   draft.ts           the in-progress log (the ONLY Zustand store)
   entry.ts           stopwatch-style digit entry — 4,1,2 reads as 4:12
   save.ts            draft -> rows, benchmark auto-tagging, PR detection
@@ -113,6 +114,15 @@ Break these and the data goes quietly wrong, which is worse than a crash.
    user's timezone. A 6 a.m. session must never land on the previous day.
 
 8. **Movements are archived, never deleted.** Deleting orphans years of history.
+
+9. **`blocks.feel` is optional and never feeds PR logic.** It records how the
+   work felt (1 wrecked → 5 flying), not how hard it was, and it lives on the
+   block because squats and the running after them rarely feel the same. A bad
+   day that still set a record is still a record. Saving must never require it.
+
+10. **Chalk yellow means "record" and nothing else.** The feel ramp runs red →
+    neutral → green and skips amber deliberately. Any new colour that drifts
+    toward the accent devalues the only colour that is supposed to matter.
 
 ---
 

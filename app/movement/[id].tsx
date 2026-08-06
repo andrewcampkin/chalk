@@ -3,7 +3,8 @@ import { useLocalSearchParams, useRouter, useNavigation } from "expo-router";
 import { useEffect, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { eq } from "drizzle-orm";
-import { blocksForMovement, repMaxes } from "../../db/queries";
+import { blocksForMovement, feelHistory, repMaxes } from "../../db/queries";
+import { FeelDot } from "../../components/Feel";
 import { movements as movementsTable } from "../../db/schema";
 import { formatScore, type Unit } from "../../db/score";
 import { db } from "../../lib/db";
@@ -27,6 +28,7 @@ export default function MovementDetail() {
   const [name, setName] = useState("");
   const [maxes, setMaxes] = useState<RepMax[]>([]);
   const [rows, setRows] = useState<Appearance[]>([]);
+  const [rated, setRated] = useState<{ date: string; feel: number | null }[]>([]);
 
   const movementId = Number(id);
 
@@ -40,6 +42,7 @@ export default function MovementDetail() {
     });
     repMaxes(db, movementId).then((r) => setMaxes(r as RepMax[])).catch(() => {});
     blocksForMovement(db, movementId).then((r) => setRows(r as Appearance[])).catch(() => {});
+    feelHistory(db, movementId, 24).then(setRated).catch(() => {});
   }, [movementId, nav]);
 
   return (
@@ -68,6 +71,23 @@ export default function MovementDetail() {
                 />
               </>
             )}
+            {rated.length > 1 && (
+              <>
+                <Text style={st.label}>How it has felt</Text>
+                <View style={st.feelStrip}>
+                  {/* Oldest on the left, so the drift reads left to right. */}
+                  {[...rated].reverse().map((r, i) => (
+                    <View key={i} style={st.feelCell}>
+                      <FeelDot feel={r.feel} size={12} />
+                    </View>
+                  ))}
+                  <Text style={st.feelAvg}>
+                    avg {(rated.reduce((n, r) => n + (r.feel ?? 0), 0) / rated.length).toFixed(1)}
+                  </Text>
+                </View>
+              </>
+            )}
+
             <Text style={st.label}>
               {rows.length} {rows.length === 1 ? "session" : "sessions"}
             </Text>
@@ -81,6 +101,7 @@ export default function MovementDetail() {
             onPress={() => router.push(`/session/${item.sessionId}`)}
             style={({ pressed }) => [st.row, pressed && { opacity: 0.6 }]}
           >
+            <FeelDot feel={item.feel} size={9} />
             <Text style={st.rowDate}>{format(parseISO(item.date), "d MMM yy")}</Text>
             <View style={{ flex: 1 }}>
               <Text style={st.rowTitle} numberOfLines={1}>{item.title || item.kind}</Text>
@@ -133,6 +154,15 @@ const st = StyleSheet.create({
     marginTop: 2,
   },
   maxDate: { color: colors.textFaint, fontSize: t.tiny, marginTop: 2 },
+  feelStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 5,
+    paddingHorizontal: space.lg,
+  },
+  feelCell: { alignItems: "center" },
+  feelAvg: { color: colors.textFaint, fontSize: t.label, marginLeft: space.sm },
   row: {
     flexDirection: "row",
     alignItems: "center",

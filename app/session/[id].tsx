@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Button } from "../../components/ui";
+import { FeelRule, FeelTag } from "../../components/Feel";
 import { deleteSession, sessionWithBlocks } from "../../db/queries";
 import { formatScore, type Unit } from "../../db/score";
 import { db } from "../../lib/db";
@@ -55,9 +56,13 @@ export default function SessionDetail() {
     <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl }}>
       {data.blocks.map((b) => (
         <View key={b.id} style={st.block}>
+          <FeelRule feel={b.feel} />
           <View style={st.head}>
             <Text style={st.kind}>{b.kind === "strength" ? "STRENGTH" : "WOD"}</Text>
-            {b.capped && <Text style={st.capped}>CAPPED</Text>}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
+              {b.capped && <Text style={st.capped}>CAPPED</Text>}
+              <FeelTag feel={b.feel} />
+            </View>
           </View>
           <Text style={st.title}>{b.title}</Text>
           <Text style={st.raw}>{b.rawText}</Text>
@@ -124,8 +129,9 @@ const st = StyleSheet.create({
     borderColor: colors.line,
     padding: space.lg,
     marginBottom: space.md,
+    overflow: "hidden",
   },
-  head: { flexDirection: "row", justifyContent: "space-between" },
+  head: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   kind: { color: colors.textFaint, fontSize: t.tiny, fontWeight: "700", letterSpacing: 1.4 },
   capped: { color: colors.danger, fontSize: t.tiny, fontWeight: "700", letterSpacing: 1.2 },
   title: { color: colors.text, fontSize: t.title, fontWeight: "700", marginTop: space.xs },

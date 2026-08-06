@@ -55,6 +55,7 @@ export async function saveDraft(draft: Draft, unit: Unit): Promise<{
       scoreRounds: draft.scoreRounds,
       scoreReps: draft.scoreReps,
       capped: draft.capped,
+      feel: draft.feel,
       notes: draft.notes.trim() || null,
     })
     .returning();

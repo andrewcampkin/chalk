@@ -90,8 +90,8 @@ export const sessions = sqliteTable(
     /** "Morning class", "Open gym". Optional. */
     label: text("label"),
     notes: text("notes"),
-    /** 1-10 perceived exertion for the whole session. */
-    rpe: integer("rpe"),
+    /* No session-level rating: "how it felt" belongs to a block, because within
+     * one session the squats and the running rarely feel the same. */
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .default(sql`(unixepoch() * 1000)`),
@@ -159,6 +159,16 @@ export const blocks = sqliteTable(
     scoreReps: integer("score_reps"),
     /** True when the score is a DNF against the cap; excluded from PR logic. */
     capped: integer("capped", { mode: "boolean" }).notNull().default(false),
+
+    /**
+     * How it felt, 1 (wrecked) to 5 (flying). Optional, and deliberately NOT
+     * exertion — this is self-assessed quality, so that a session can record
+     * "squats felt weak but the running afterwards felt great". That is why it
+     * lives on the block and not on the session.
+     *
+     * Never feeds PR logic. A bad day that still set a record is still a record.
+     */
+    feel: integer("feel"),
 
     timeCapSec: integer("time_cap_sec"),
     /** crossfit.com's "Compare to 260717" — self-referential, set manually or by the app. */

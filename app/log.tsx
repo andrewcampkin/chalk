@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { Button, Chip, ChipRow, Keypad, WrapRow, s as ui } from "../components/ui";
+import { FeelPicker } from "../components/Feel";
 import { MovementPicker } from "../components/MovementPicker";
 import { PrToast } from "../components/PrToast";
 import type { BlockFormat } from "../db/schema";
@@ -285,6 +286,9 @@ export default function LogScreen() {
         <ChipRow>
           <Chip label="Capped / DNF" selected={draft.capped} onPress={() => patch({ capped: !draft.capped })} />
         </ChipRow>
+
+        <Text style={st.label}>Felt like</Text>
+        <FeelPicker value={draft.feel} onChange={(v) => patch({ feel: v })} />
 
         <Text style={st.label}>As written</Text>
         <TextInput

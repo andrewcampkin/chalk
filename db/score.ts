@@ -89,8 +89,25 @@ export function formatLoad(grams: number | null, unit: Unit): string {
   return `${trimZeros(lb.toFixed(1))} lb`;
 }
 
+/** "82.50" -> "82.5", "5.00" -> "5", "100" -> "100" (never touches integers). */
 function trimZeros(s: string): string {
-  return s.replace(/\.0$/, "");
+  if (!s.includes(".")) return s;
+  return s.replace(/0+$/, "").replace(/\.$/, "");
+}
+
+/* -------------------------------------------------------------------------- */
+/* distance                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Stored in metres always. Shown in kilometres once it stops reading naturally
+ * as metres — "5 km" not "5000 m", but still "400 m", which is how the distance
+ * is written on the whiteboard.
+ */
+export function formatDistance(metres: number | null): string {
+  if (metres == null) return "—";
+  if (metres >= 1000) return `${trimZeros((metres / 1000).toFixed(2))} km`;
+  return `${metres} m`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -176,7 +193,7 @@ export function formatScore(
     case "rounds_reps":
       return formatRoundsReps(opts.rounds ?? null, opts.reps ?? null);
     case "distance":
-      return value == null ? "—" : `${value} m`;
+      return formatDistance(value);
     case "none":
       return "—";
   }

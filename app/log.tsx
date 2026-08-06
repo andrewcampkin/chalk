@@ -10,9 +10,13 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button, Chip, ChipRow, Keypad, WrapRow, s as ui } from "../components/ui";
+import { DateField } from "../components/DateField";
 import { FeelPicker } from "../components/Feel";
 import { MovementPicker } from "../components/MovementPicker";
+import { describeIso, todayIso } from "../lib/dates";
+import { DISTANCE_PRESETS, isDistanceMovement, presetLabel } from "../lib/inputs";
 import { PrToast } from "../components/PrToast";
 import type { BlockFormat } from "../db/schema";
 import { formatLoad } from "../db/score";
@@ -39,15 +43,26 @@ const FORMATS: { key: BlockFormat; label: string }[] = [
   { key: "chipper", label: "Chipper" },
 ];
 
+/** Maps a slot's field id suffix onto the draft column it writes. */
+const FIELD_COLUMN: Record<string, string> = {
+  reps: "reps",
+  load: "loadG",
+  distance: "distanceM",
+  calories: "calories",
+};
+
 const DURATIONS = [8, 10, 12, 15, 20, 30];
 const SCHEMES = ["21-15-9", "21-18-15-12-9", "10-9-8-7-6-5-4-3-2-1", "5 rounds", "3 rounds"];
 
 export default function LogScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { draft, unit, patch, setFormat, addMovement, removeMovement, patchMovement, addSet, patchSet, removeSet } =
     useDraft();
 
-  const [chips, setChips] = useState<{ id: number; name: string }[]>([]);
+  const [chips, setChips] = useState<
+    { id: number; name: string; modality: string | null; defaultScoreType: string | null }[]
+  >([]);
   const [picking, setPicking] = useState<null | "strength" | "wod">(null);
   const [active, setActive] = useState<string | null>(null);
   const [buf, setBuf] = useState<Record<string, string>>({});
@@ -75,8 +90,9 @@ export default function LogScreen() {
       else if (id === "duration") patch({ durationMin: value });
       else {
         const [scope, key, field] = id.split(":");
-        if (scope === "set") patchSet(key, { [field === "load" ? "loadG" : "reps"]: value } as any);
-        if (scope === "mov") patchMovement(key, { [field === "load" ? "loadG" : "reps"]: value } as any);
+        const column = FIELD_COLUMN[field] ?? "reps";
+        if (scope === "set") patchSet(key, { [column]: value } as any);
+        if (scope === "mov") patchMovement(key, { [column]: value } as any);
       }
     },
     [fieldKind, patch, patchMovement, patchSet, unit],
@@ -101,7 +117,12 @@ export default function LogScreen() {
       const named = await Promise.all(
         ids.map(async (id) => {
           const [r] = await db.select().from(movementsTable).where(eq(movementsTable.id, id));
-          return { id, name: r?.name ?? "" };
+          return {
+            id,
+            name: r?.name ?? "",
+            modality: r?.modality ?? null,
+            defaultScoreType: r?.defaultScoreType ?? null,
+          };
         }),
       );
       named.forEach(addMovement);
@@ -142,6 +163,11 @@ export default function LogScreen() {
   return (
     <View style={st.screen}>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: space.lg }}>
+        <DateField value={draft.date} onChange={(iso) => patch({ date: iso })} />
+        {draft.date !== todayIso() && (
+          <Text style={st.backdated}>Logging to {describeIso(draft.date)}</Text>
+        )}
+
         <ChipRow>
           <Chip label="WOD" selected={draft.kind === "wod"} onPress={() => patch({ kind: "wod", format: "for_time", scoreType: "time" })} />
           <Chip label="Strength" selected={draft.kind === "strength"} onPress={() => patch({ kind: "strength", format: "sets", scoreType: "load" })} />
@@ -189,28 +215,72 @@ export default function LogScreen() {
               ))}
             </ChipRow>
 
-            {draft.movements.map((m) => (
-              <View key={m.key} style={st.movRow}>
-                <Pressable onPress={() => removeMovement(m.key)} hitSlop={10} style={st.remove}>
-                  <Ionicons name="close" size={18} color={colors.textFaint} />
-                </Pressable>
-                <Text style={st.movName} numberOfLines={1}>{m.name}</Text>
-                <Slot
-                  id={`mov:${m.key}:reps`}
-                  label="reps"
-                  value={displayBuffer(buf[`mov:${m.key}:reps`] ?? "", "int")}
-                  active={active === `mov:${m.key}:reps`}
-                  onPress={setActive}
-                />
-                <Slot
-                  id={`mov:${m.key}:load`}
-                  label={unit}
-                  value={displayBuffer(buf[`mov:${m.key}:load`] ?? "", "load")}
-                  active={active === `mov:${m.key}:load`}
-                  onPress={setActive}
-                />
-              </View>
-            ))}
+            {draft.movements.map((m) => {
+              const distance = isDistanceMovement(m);
+              return (
+                <View key={m.key}>
+                  <View style={st.movRow}>
+                    <Pressable onPress={() => removeMovement(m.key)} hitSlop={10} style={st.remove}>
+                      <Ionicons name="close" size={18} color={colors.textFaint} />
+                    </Pressable>
+                    <Text style={st.movName} numberOfLines={1}>{m.name}</Text>
+                    {distance ? (
+                      <>
+                        <Slot
+                          id={`mov:${m.key}:distance`}
+                          label="m"
+                          value={displayBuffer(buf[`mov:${m.key}:distance`] ?? "", "int")}
+                          active={active === `mov:${m.key}:distance`}
+                          onPress={setActive}
+                          wide
+                        />
+                        <Slot
+                          id={`mov:${m.key}:calories`}
+                          label="cal"
+                          value={displayBuffer(buf[`mov:${m.key}:calories`] ?? "", "int")}
+                          active={active === `mov:${m.key}:calories`}
+                          onPress={setActive}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <Slot
+                          id={`mov:${m.key}:reps`}
+                          label="reps"
+                          value={displayBuffer(buf[`mov:${m.key}:reps`] ?? "", "int")}
+                          active={active === `mov:${m.key}:reps`}
+                          onPress={setActive}
+                        />
+                        <Slot
+                          id={`mov:${m.key}:load`}
+                          label={unit}
+                          value={displayBuffer(buf[`mov:${m.key}:load`] ?? "", "load")}
+                          active={active === `mov:${m.key}:load`}
+                          onPress={setActive}
+                        />
+                      </>
+                    )}
+                  </View>
+
+                  {/* 400s and 5ks are most of the running anybody logs. */}
+                  {distance && (
+                    <ChipRow>
+                      {DISTANCE_PRESETS.map((d) => (
+                        <Chip
+                          key={d}
+                          label={presetLabel(d)}
+                          selected={m.distanceM === d}
+                          onPress={() => {
+                            setBuf((b) => ({ ...b, [`mov:${m.key}:distance`]: String(d) }));
+                            patchMovement(m.key, { distanceM: d });
+                          }}
+                        />
+                      ))}
+                    </ChipRow>
+                  )}
+                </View>
+              );
+            })}
           </>
         ) : (
           <>
@@ -316,7 +386,9 @@ export default function LogScreen() {
         </View>
       )}
 
-      <View style={st.footer}>
+      {/* Sits at the very bottom of an edge-to-edge screen, so it must clear
+          the Android nav bar itself — nothing else is below it. */}
+      <View style={[st.footer, { paddingBottom: space.lg + insets.bottom }]}>
         <Button label={saving ? "Saving…" : "Save"} onPress={onSave} disabled={!canSave || saving} />
       </View>
 
@@ -359,6 +431,13 @@ function BigSlot(props: Parameters<typeof Slot>[0]) {
 
 const st = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  backdated: {
+    color: colors.wod,
+    fontSize: t.label,
+    fontWeight: "700",
+    paddingHorizontal: space.lg,
+    paddingTop: space.xs,
+  },
   label: {
     color: colors.textFaint,
     fontSize: t.label,

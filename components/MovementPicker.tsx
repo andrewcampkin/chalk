@@ -1,11 +1,20 @@
 import { useEffect, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { resolveMovements } from "../db/queries";
 import { db } from "../lib/db";
 import { colors, radius, space, tap, type as t } from "../lib/theme";
 import { Button } from "./ui";
 
-type Row = { id: number; name: string; kind: string; prescription: string | null };
+type Row = {
+  id: number;
+  name: string;
+  kind: string;
+  prescription: string | null;
+  /** Carried through so the log form knows whether to ask for metres or kilos. */
+  modality: string | null;
+  defaultScoreType: string | null;
+};
 
 /**
  * The autocomplete from the log screen, pointed at the whole vocabulary —
@@ -19,6 +28,7 @@ export function MovementPicker({
   onPick: (m: Row) => void;
   onClose: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const [term, setTerm] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
 
@@ -53,6 +63,7 @@ export function MovementPicker({
         data={rows}
         keyExtractor={(r) => String(r.id)}
         keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: insets.bottom }}
         renderItem={({ item }) => (
           <Pressable onPress={() => onPick(item)} style={({ pressed }) => [st.row, pressed && { opacity: 0.6 }]}>
             <View style={{ flex: 1 }}>

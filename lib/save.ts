@@ -1,7 +1,8 @@
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import { blockMovements, blocks, movements, prs, sessions } from "../db/schema";
-import { recomputePrsForBlock } from "../db/queries";
+import { rebuildAllPrs, recomputePrsForBlock } from "../db/queries";
+import { todayIso } from "./dates";
 import { BENCHMARK_COMPONENTS } from "../db/seed";
 import { generateRawText, generateTitle, type Draft } from "./draft";
 import type { Unit } from "../db/score";
@@ -61,7 +62,16 @@ export async function saveDraft(draft: Draft, unit: Unit): Promise<{
     .returning();
 
   await writeMovementRows(block.id, draft);
-  await recomputePrsForBlock(db, block.id);
+
+  // A backdated block lands out of order, so an incremental recompute would
+  // record a "previous best" that was actually set later. rebuildAllPrs walks
+  // the whole history in date order and gets the chronology right. The cache is
+  // small and this only happens when logging a day other than today.
+  if (draft.date !== todayIso()) {
+    await rebuildAllPrs(db);
+  } else {
+    await recomputePrsForBlock(db, block.id);
+  }
 
   const set = await db
     .select({
@@ -173,8 +183,16 @@ export async function benchmarkComponentIds(benchmarkId: number): Promise<number
  * last-seen then frequency is what gets an AMRAP logged in five taps.
  */
 export async function recentMovementChips(limit = 10) {
-  return db.all<{ id: number; name: string }>(sql`
-    select m.id as id, m.name as name
+  return db.all<{
+    id: number;
+    name: string;
+    modality: string | null;
+    defaultScoreType: string | null;
+  }>(sql`
+    select m.id as id,
+           m.name as name,
+           m.modality as modality,
+           m.default_score_type as defaultScoreType
     from block_movements bm
     join movements m on m.id = bm.movement_id
     join blocks b    on b.id = bm.block_id

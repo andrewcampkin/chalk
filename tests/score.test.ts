@@ -98,6 +98,7 @@ describe("formatScore", () => {
     expect(formatScore("time", 252)).toBe("4:12");
     expect(formatScore("reps", 150)).toBe("150 reps");
     expect(formatScore("rounds_reps", 315, { rounds: 21, reps: 3 })).toBe("21 + 3");
-    expect(formatScore("distance", 5000)).toBe("5000 m");
+    expect(formatScore("distance", 5000)).toBe("5 km");
+    expect(formatScore("distance", 400)).toBe("400 m");
   });
 });

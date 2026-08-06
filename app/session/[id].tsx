@@ -3,6 +3,7 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "../../components/ui";
 import { FeelRule, FeelTag } from "../../components/Feel";
 import { deleteSession, sessionWithBlocks } from "../../db/queries";
@@ -17,6 +18,7 @@ export default function SessionDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const nav = useNavigation();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const unit = useDraft((s) => s.unit) as Unit;
   const start = useDraft((s) => s.start);
   const [data, setData] = useState<Data>(null);
@@ -53,7 +55,10 @@ export default function SessionDetail() {
     ]);
 
   return (
-    <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl }}>
+    <ScrollView
+      style={{ backgroundColor: colors.bg }}
+      contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl + insets.bottom }}
+    >
       {data.blocks.map((b) => (
         <View key={b.id} style={st.block}>
           <FeelRule feel={b.feel} />

@@ -1,10 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs, useRouter } from "expo-router";
 import { Pressable } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, tap } from "../../lib/theme";
 
 export default function TabsLayout() {
   const router = useRouter();
+  // Android draws edge-to-edge, so the tab bar sits underneath the gesture pill
+  // or the three-button nav unless it reserves that height itself.
+  const insets = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
@@ -16,9 +20,9 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.line,
-          height: tap.min + 18,
+          height: tap.min + 18 + insets.bottom,
           paddingTop: 6,
-          paddingBottom: 10,
+          paddingBottom: 10 + insets.bottom,
         },
         tabBarActiveTintColor: colors.text,
         tabBarInactiveTintColor: colors.textFaint,

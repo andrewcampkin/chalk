@@ -2,6 +2,7 @@ import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button, Chip, ChipRow } from "../components/ui";
 import { db } from "../lib/db";
 import { useDraft } from "../lib/draft";
@@ -9,6 +10,7 @@ import { buildExportDoc, exportFilename } from "../lib/export";
 import { colors, radius, space, type as t } from "../lib/theme";
 
 export default function Settings() {
+  const insets = useSafeAreaInsets();
   const unit = useDraft((s) => s.unit);
   const setUnit = useDraft((s) => s.setUnit);
   const [counts, setCounts] = useState<{ sessions: number; blocks: number; sets: number } | null>(null);
@@ -52,7 +54,10 @@ export default function Settings() {
   };
 
   return (
-    <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={{ paddingBottom: space.xxl }}>
+    <ScrollView
+      style={{ backgroundColor: colors.bg }}
+      contentContainerStyle={{ paddingBottom: space.xxl + insets.bottom }}
+    >
       <Text style={st.label}>Units</Text>
       <ChipRow>
         <Chip label="kg" selected={unit === "kg"} onPress={() => setUnit("kg")} />

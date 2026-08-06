@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { BlockFormat, ScoreType } from "../db/schema";
-import { formatLoad, type Unit } from "../db/score";
+import { formatDistance, formatLoad, type Unit } from "../db/score";
+import { todayIso as isoToday } from "./dates";
 
 /**
  * The in-progress log. The ONLY thing Zustand owns — everything else reads from
@@ -20,6 +21,9 @@ export type DraftMovement = {
   key: string;
   movementId: number;
   name: string;
+  /** Carried from the seed so the form knows to offer metres, not kilos. */
+  modality: string | null;
+  defaultScoreType: string | null;
   /** Reps per round, or total for a chipper. */
   reps: number | null;
   loadG: number | null;
@@ -66,12 +70,8 @@ export type Draft = {
 let seq = 0;
 const key = () => `k${++seq}`;
 
-export function todayIso(): string {
-  // Local calendar day. Never UTC — a 6am session must not land on yesterday.
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
+/** Re-exported so callers have one source of truth for invariant 7. */
+export { todayIso } from "./dates";
 
 function emptyDraft(kind: "strength" | "wod", date: string): Draft {
   return {
@@ -107,7 +107,12 @@ type Store = {
   start: (kind: "strength" | "wod", date?: string) => void;
   patch: (p: Partial<Draft>) => void;
   setFormat: (f: BlockFormat) => void;
-  addMovement: (m: { id: number; name: string }) => void;
+  addMovement: (m: {
+    id: number;
+    name: string;
+    modality?: string | null;
+    defaultScoreType?: string | null;
+  }) => void;
   removeMovement: (k: string) => void;
   patchMovement: (k: string, p: Partial<DraftMovement>) => void;
   addSet: () => void;
@@ -117,10 +122,10 @@ type Store = {
 };
 
 export const useDraft = create<Store>((set, get) => ({
-  draft: emptyDraft("wod", todayIso()),
+  draft: emptyDraft("wod", isoToday()),
   unit: "kg",
 
-  start: (kind, date) => set({ draft: emptyDraft(kind, date ?? todayIso()) }),
+  start: (kind, date) => set({ draft: emptyDraft(kind, date ?? isoToday()) }),
 
   patch: (p) => set((s) => ({ draft: { ...s.draft, ...p } })),
 
@@ -154,6 +159,8 @@ export const useDraft = create<Store>((set, get) => ({
                 key: key(),
                 movementId: m.id,
                 name: m.name,
+                modality: m.modality ?? null,
+                defaultScoreType: m.defaultScoreType ?? null,
                 reps: null,
                 loadG: null,
                 distanceM: null,
@@ -239,11 +246,15 @@ const FORMAT_LABEL: Record<BlockFormat, string> = {
  */
 export function generateRawText(d: Draft, unit: Unit): string {
   const line = (m: DraftMovement) => {
+    // A run reads "400 m Run", not "Run (400 m)".
+    if (m.distanceM || m.calories) {
+      const lead = m.distanceM ? formatDistance(m.distanceM) : `${m.calories} cal`;
+      const tail = m.distanceM && m.calories ? ` (${m.calories} cal)` : "";
+      return `${lead} ${m.name}${tail}`;
+    }
     const bits = [m.reps ? String(m.reps) : null, m.name].filter(Boolean).join(" ");
     const extras: string[] = [];
     if (m.loadG) extras.push(formatLoad(m.loadG, unit));
-    if (m.distanceM) extras.push(`${m.distanceM} m`);
-    if (m.calories) extras.push(`${m.calories} cal`);
     return extras.length ? `${bits} (${extras.join(", ")})` : bits;
   };
 

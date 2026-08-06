@@ -2,6 +2,7 @@ import { format, parseISO } from "date-fns";
 import { useLocalSearchParams, useRouter, useNavigation } from "expo-router";
 import { useEffect, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { eq } from "drizzle-orm";
 import { blocksForMovement, feelHistory, repMaxes, topSetsOverTime } from "../../db/queries";
 import { FeelDot } from "../../components/Feel";
@@ -24,6 +25,7 @@ export default function MovementDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const nav = useNavigation();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const unit = useDraft((s) => s.unit) as Unit;
 
   const [name, setName] = useState("");
@@ -130,7 +132,7 @@ export default function MovementDetail() {
             </Text>
           </Pressable>
         )}
-        contentContainerStyle={{ paddingBottom: space.xxl }}
+        contentContainerStyle={{ paddingBottom: space.xxl + insets.bottom }}
       />
     </View>
   );

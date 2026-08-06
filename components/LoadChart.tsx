@@ -24,20 +24,24 @@ export type LoadPoint = {
 export function LoadChart({ points, unit }: { points: LoadPoint[]; unit: Unit }) {
   const { width } = useWindowDimensions();
 
-  const data = useMemo(
-    () =>
-      points.map((p) => {
-        const c = feelColor(p.feel);
-        return {
-          value: unit === "kg" ? gramsToKg(p.loadG) : gramsToLb(p.loadG),
-          // Unrated sessions still get a point, just a quiet one.
-          dataPointColor: c ?? colors.textDim,
-          dataPointRadius: c ? 5 : 3.5,
-          label: format(parseISO(p.date), "MMM"),
-        };
-      }),
-    [points, unit],
-  );
+  const data = useMemo(() => {
+    let lastMonth = "";
+    return points.map((p) => {
+      const c = feelColor(p.feel);
+      // Label a month once. Repeating "Jun, Jun, Jul, Jul" reads as noise and
+      // tells you nothing the first one didn't.
+      const month = format(parseISO(p.date), "MMM");
+      const label = month === lastMonth ? "" : month;
+      lastMonth = month;
+      return {
+        value: unit === "kg" ? gramsToKg(p.loadG) : gramsToLb(p.loadG),
+        // Unrated sessions still get a point, just a quiet one.
+        dataPointColor: c ?? colors.textDim,
+        dataPointRadius: c ? 5 : 3.5,
+        label,
+      };
+    });
+  }, [points, unit]);
 
   if (points.length < 2) return null;
 
@@ -47,8 +51,10 @@ export function LoadChart({ points, unit }: { points: LoadPoint[]; unit: Unit })
   const best = points.reduce((a, b) => (b.loadG > a.loadG ? b : a), points[0]);
   const latest = points[points.length - 1];
 
-  // Leave a little air above and below so the line never touches the edges.
-  const pad = Math.max(2, (max - min) * 0.25);
+  // Just enough air that the line never touches the edges. A larger fraction
+  // squashes the whole series into the middle band and flattens exactly the
+  // movement the chart exists to show.
+  const pad = Math.max(1, (max - min) * 0.1);
 
   return (
     <View style={st.wrap}>

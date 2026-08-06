@@ -63,6 +63,27 @@ export function bufferToValue(
   return Number.isFinite(n) && buf.replace(/\D/g, "") !== "" ? n : null;
 }
 
+/**
+ * The inverse of timeBufferToSeconds, for loading a saved score back into the
+ * pad: 252 -> "412", which redisplays as 4:12.
+ */
+export function secondsToBuffer(seconds: number | null): string {
+  if (seconds == null) return "";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const digits = h > 0 ? `${h}${pad2(m)}${pad2(s)}` : `${m}${pad2(s)}`;
+  return digits.replace(/^0+(?=\d)/, "");
+}
+
+/** Grams back to the load buffer: 82500 -> "82.5". */
+export function gramsToBuffer(grams: number | null, unit: Unit): string {
+  if (grams == null) return "";
+  const value = unit === "kg" ? grams / 1000 : grams / 453.59237;
+  return String(Math.round(value * 100) / 100);
+}
+
 export function displayBuffer(buf: string, kind: FieldKind, placeholder = "—"): string {
   if (kind === "time") return buf ? displayTimeBuffer(buf) : placeholder;
   return buf || placeholder;

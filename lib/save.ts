@@ -24,11 +24,13 @@ export type SavedPr = {
  * Returns any records the block set, so the log screen can show the PR moment
  * at the instant it happens rather than making the user go looking.
  */
-export async function saveDraft(draft: Draft, unit: Unit): Promise<{
-  sessionId: number;
-  blockId: number;
-  newPrs: SavedPr[];
-}> {
+export async function saveDraft(
+  draft: Draft,
+  unit: Unit,
+  editingBlockId?: number | null,
+): Promise<{ sessionId: number; blockId: number; newPrs: SavedPr[] }> {
+  if (editingBlockId != null) return updateBlock(draft, unit, editingBlockId);
+
   const sessionId = await findOrCreateSession(draft.date);
 
   const existing = await db
@@ -87,6 +89,85 @@ export async function saveDraft(draft: Draft, unit: Unit): Promise<{
     .where(eq(prs.blockId, block.id));
 
   return { sessionId, blockId: block.id, newPrs: set as SavedPr[] };
+}
+
+/**
+ * Rewrites an existing block in place.
+ *
+ * The sets are deleted and reinserted rather than diffed — a block is small,
+ * and reconciling row-by-row is a lot of surface area for the chance of
+ * leaving an orphan behind.
+ *
+ * PRs are always fully rebuilt. An edit can lower a value that currently holds
+ * a record, and no incremental comparison can detect that (invariant 3): the
+ * cache has to be reconstructed from what the blocks now say. Moving the block
+ * to a different date needs the same treatment, since record chronology
+ * depends on the order.
+ */
+async function updateBlock(draft: Draft, unit: Unit, blockId: number) {
+  const [existing] = await db.select().from(blocks).where(eq(blocks.id, blockId));
+  if (!existing) throw new Error("That block no longer exists.");
+
+  const sessionId = await findOrCreateSession(draft.date);
+  const rawText = draft.rawTextDirty ? draft.rawText : generateRawText(draft, unit);
+
+  await db
+    .update(blocks)
+    .set({
+      sessionId,
+      kind: draft.kind,
+      title: generateTitle(draft),
+      benchmarkId: draft.benchmarkId,
+      rawText: rawText.trim() || generateTitle(draft),
+      format: draft.format,
+      scoreType: draft.scoreType,
+      scoreValue: draft.scoreValue,
+      scoreRounds: draft.scoreRounds,
+      scoreReps: draft.scoreReps,
+      capped: draft.capped,
+      feel: draft.feel,
+      notes: draft.notes.trim() || null,
+    })
+    .where(eq(blocks.id, blockId));
+
+  await db.delete(blockMovements).where(eq(blockMovements.blockId, blockId));
+  await writeMovementRows(blockId, draft);
+  await rebuildAllPrs(db);
+
+  // Tidy up a session left with no blocks after the edit moved its only one.
+  if (existing.sessionId !== sessionId) await deleteSessionIfEmpty(existing.sessionId);
+
+  const newPrs = await db
+    .select({
+      movementId: prs.movementId,
+      name: movements.name,
+      scoreType: prs.scoreType,
+      repScheme: prs.repScheme,
+      value: prs.value,
+      previousValue: prs.previousValue,
+    })
+    .from(prs)
+    .innerJoin(movements, eq(movements.id, prs.movementId))
+    .where(eq(prs.blockId, blockId));
+
+  return { sessionId, blockId, newPrs: newPrs as SavedPr[] };
+}
+
+async function deleteSessionIfEmpty(sessionId: number) {
+  const remaining = await db
+    .select({ id: blocks.id })
+    .from(blocks)
+    .where(eq(blocks.sessionId, sessionId));
+  if (!remaining.length) await db.delete(sessions).where(eq(sessions.id, sessionId));
+}
+
+/** Removes a single block, leaving the rest of the session intact. */
+export async function deleteBlock(blockId: number) {
+  const [block] = await db.select().from(blocks).where(eq(blocks.id, blockId));
+  if (!block) return;
+  await db.delete(blocks).where(eq(blocks.id, blockId));
+  await deleteSessionIfEmpty(block.sessionId);
+  await rebuildAllPrs(db);
 }
 
 async function findOrCreateSession(date: string): Promise<number> {

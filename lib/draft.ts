@@ -91,7 +91,9 @@ function emptyDraft(kind: "strength" | "wod", date: string): Draft {
     repScheme: "",
     rounds: null,
     durationMin: null,
-    scoreType: kind === "strength" ? "load" : "time",
+    // Strength has no block-level score: the sets carry the loads, and a rep
+    // max is derived from those rows. See app/log.tsx.
+    scoreType: kind === "strength" ? "none" : "time",
     scoreValue: null,
     scoreRounds: null,
     scoreReps: null,
@@ -105,6 +107,8 @@ type Store = {
   draft: Draft;
   unit: Unit;
   start: (kind: "strength" | "wod", date?: string) => void;
+  /** Replaces the whole draft — used when opening a saved block for editing. */
+  load: (d: Draft) => void;
   patch: (p: Partial<Draft>) => void;
   setFormat: (f: BlockFormat) => void;
   addMovement: (m: {
@@ -126,6 +130,8 @@ export const useDraft = create<Store>((set, get) => ({
   unit: "kg",
 
   start: (kind, date) => set({ draft: emptyDraft(kind, date ?? isoToday()) }),
+
+  load: (d) => set({ draft: d }),
 
   patch: (p) => set((s) => ({ draft: { ...s.draft, ...p } })),
 

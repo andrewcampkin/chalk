@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { LayoutChangeEvent } from "react-native";
 import {
   Alert,
   Pressable,
@@ -29,7 +30,8 @@ import {
   displayBuffer,
   type FieldKind,
 } from "../lib/entry";
-import { benchmarkComponentIds, recentMovementChips, saveDraft, type SavedPr } from "../lib/save";
+import { benchmarkComponentIds, deleteBlock, recentMovementChips, saveDraft, type SavedPr } from "../lib/save";
+import { draftFromBlock } from "../lib/edit";
 import { db } from "../lib/db";
 import { colors, radius, space, tap, type as t } from "../lib/theme";
 import { movements as movementsTable } from "../db/schema";
@@ -56,9 +58,15 @@ const SCHEMES = ["21-15-9", "21-18-15-12-9", "10-9-8-7-6-5-4-3-2-1", "5 rounds",
 
 export default function LogScreen() {
   const router = useRouter();
+  const nav = useNavigation();
   const insets = useSafeAreaInsets();
-  const { draft, unit, patch, setFormat, addMovement, removeMovement, patchMovement, addSet, patchSet, removeSet } =
+  const { draft, unit, load, patch, setFormat, addMovement, removeMovement, patchMovement, addSet, patchSet, removeSet } =
     useDraft();
+
+  // Present when opened from a saved block. Everything else is identical —
+  // the same form edits an existing block and creates a new one.
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const editingBlockId = edit ? Number(edit) : null;
 
   const [chips, setChips] = useState<
     { id: number; name: string; modality: string | null; defaultScoreType: string | null }[]
@@ -68,10 +76,87 @@ export default function LogScreen() {
   const [buf, setBuf] = useState<Record<string, string>>({});
   const [prs, setPrs] = useState<SavedPr[] | null>(null);
   const [saving, setSaving] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     recentMovementChips().then(setChips).catch(() => setChips([]));
   }, []);
+
+  useEffect(() => {
+    if (editingBlockId == null || !Number.isFinite(editingBlockId)) return;
+    nav.setOptions({ title: "Edit block" });
+    draftFromBlock(editingBlockId, unit)
+      .then((res) => {
+        if (!res) {
+          Alert.alert("Not found", "That block no longer exists.");
+          router.back();
+          return;
+        }
+        load(res.draft);
+        setBuf(res.buffers);
+      })
+      .catch((e) => Alert.alert("Could not open", String(e?.message ?? e)));
+    // unit is deliberately not a dependency: reloading mid-edit would discard
+    // whatever has been typed since.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingBlockId]);
+
+  /**
+   * Every numeric field, in the order you would fill them in. Drives the Next
+   * key, so a whole workout can be entered without reaching back up to the
+   * screen between numbers.
+   */
+  const fieldOrder = useMemo(() => {
+    const ids: string[] = [];
+    if (draft.kind === "wod") {
+      for (const m of draft.movements) {
+        ids.push(
+          ...(isDistanceMovement(m)
+            ? [`mov:${m.key}:distance`, `mov:${m.key}:calories`]
+            : [`mov:${m.key}:reps`, `mov:${m.key}:load`]),
+        );
+      }
+    } else {
+      for (const s of draft.sets) ids.push(`set:${s.key}:reps`, `set:${s.key}:load`);
+    }
+    // Strength stops at the last set — there is no score field to move on to.
+    if (draft.kind === "wod") {
+      if (draft.scoreType === "rounds_reps") ids.push("rounds", "reps");
+      else if (draft.scoreType !== "none") ids.push("score");
+    }
+    return ids;
+  }, [draft.kind, draft.movements, draft.sets, draft.scoreType]);
+
+  const activeIndex = active ? fieldOrder.indexOf(active) : -1;
+  const isLastField = activeIndex >= 0 && activeIndex === fieldOrder.length - 1;
+
+  const goToNextField = () => {
+    if (activeIndex < 0 || isLastField) {
+      setActive(null);
+      return;
+    }
+    setActive(fieldOrder[activeIndex + 1]);
+  };
+
+  /**
+   * Where each row sits inside the scroll content, recorded as it lays out.
+   * Rows are direct children of the content container, so layout.y is already
+   * the offset we need.
+   */
+  const rowY = useRef<Record<string, number>>({});
+  const registerRow = (ids: string[]) => (e: LayoutChangeEvent) => {
+    const { y } = e.nativeEvent.layout;
+    for (const id of ids) rowY.current[id] = y;
+  };
+
+  // Bring the field being edited to the top of what is left of the screen, so
+  // the pad never hides the thing it is typing into.
+  useEffect(() => {
+    if (!active) return;
+    const y = rowY.current[active];
+    if (y == null) return;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - space.md), animated: true });
+  }, [active]);
 
   const fieldKind = useCallback((id: string): FieldKind => {
     if (id === "score" && draft.scoreType === "time") return "time";
@@ -141,7 +226,7 @@ export default function LogScreen() {
     if (saving) return;
     setSaving(true);
     try {
-      const res = await saveDraft(draft, unit);
+      const res = await saveDraft(draft, unit, editingBlockId);
       if (res.newPrs.length) setPrs(res.newPrs);
       else router.back();
     } catch (e: any) {
@@ -162,7 +247,14 @@ export default function LogScreen() {
 
   return (
     <View style={st.screen}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: space.lg }}>
+      <ScrollView
+        ref={scrollRef}
+        // flex:1 so the sheet genuinely shrinks when the pad opens, instead of
+        // keeping its full height and letting the pad sit on top of the fields.
+        style={{ flex: 1 }}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: space.lg }}
+      >
         <DateField value={draft.date} onChange={(iso) => patch({ date: iso })} />
         {draft.date !== todayIso() && (
           <Text style={st.backdated}>Logging to {describeIso(draft.date)}</Text>
@@ -170,7 +262,22 @@ export default function LogScreen() {
 
         <ChipRow>
           <Chip label="WOD" selected={draft.kind === "wod"} onPress={() => patch({ kind: "wod", format: "for_time", scoreType: "time" })} />
-          <Chip label="Strength" selected={draft.kind === "strength"} onPress={() => patch({ kind: "strength", format: "sets", scoreType: "load" })} />
+          <Chip
+            label="Strength"
+            selected={draft.kind === "strength"}
+            onPress={() =>
+              patch({
+                kind: "strength",
+                format: "sets",
+                // A strength block carries no score of its own; the sets do.
+                scoreType: "none",
+                scoreValue: null,
+                scoreRounds: null,
+                scoreReps: null,
+                capped: false,
+              })
+            }
+          />
         </ChipRow>
 
         {draft.kind === "wod" ? (
@@ -217,8 +324,11 @@ export default function LogScreen() {
 
             {draft.movements.map((m) => {
               const distance = isDistanceMovement(m);
+              const ids = distance
+                ? [`mov:${m.key}:distance`, `mov:${m.key}:calories`]
+                : [`mov:${m.key}:reps`, `mov:${m.key}:load`];
               return (
-                <View key={m.key}>
+                <View key={m.key} onLayout={registerRow(ids)}>
                   <View style={st.movRow}>
                     <Pressable onPress={() => removeMovement(m.key)} hitSlop={10} style={st.remove}>
                       <Ionicons name="close" size={18} color={colors.textFaint} />
@@ -299,7 +409,11 @@ export default function LogScreen() {
 
             <Text style={st.label}>Sets</Text>
             {draft.sets.map((set, i) => (
-              <View key={set.key} style={st.movRow}>
+              <View
+                key={set.key}
+                style={st.movRow}
+                onLayout={registerRow([`set:${set.key}:reps`, `set:${set.key}:load`])}
+              >
                 <Text style={st.setNo}>{i + 1}</Text>
                 <Slot
                   id={`set:${set.key}:reps`}
@@ -335,8 +449,14 @@ export default function LogScreen() {
           </>
         )}
 
+        {/* Strength has no separate score. The sets grid already holds the
+            loads, and a strength record is derived from those rows — never from
+            blocks.score_value — so a score field here would be a second place
+            to type the same number, able to disagree with the first. */}
+        {draft.kind === "wod" && (
+          <>
         <Text style={st.label}>Score</Text>
-        <View style={st.scoreRow}>
+        <View style={st.scoreRow} onLayout={registerRow(["score", "rounds", "reps"])}>
           {draft.scoreType === "rounds_reps" ? (
             <>
               <BigSlot id="rounds" label="rounds" value={displayBuffer(buf.rounds ?? "", "int", "0")} active={active === "rounds"} onPress={setActive} />
@@ -356,9 +476,33 @@ export default function LogScreen() {
         <ChipRow>
           <Chip label="Capped / DNF" selected={draft.capped} onPress={() => patch({ capped: !draft.capped })} />
         </ChipRow>
+          </>
+        )}
 
         <Text style={st.label}>Felt like</Text>
         <FeelPicker value={draft.feel} onChange={(v) => patch({ feel: v })} />
+
+        {editingBlockId != null && (
+          <View style={{ paddingHorizontal: space.lg, paddingTop: space.xl }}>
+            <Button
+              label="Delete this block"
+              variant="danger"
+              onPress={() =>
+                Alert.alert("Delete block?", "The rest of the session is kept.", [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                      await deleteBlock(editingBlockId);
+                      router.back();
+                    },
+                  },
+                ])
+              }
+            />
+          </View>
+        )}
 
         <Text style={st.label}>As written</Text>
         <TextInput
@@ -372,7 +516,7 @@ export default function LogScreen() {
       </ScrollView>
 
       {active && (
-        <View style={st.pad}>
+        <View style={[st.pad, { paddingBottom: space.sm + insets.bottom }]}>
           <Keypad
             onDigit={onDigit}
             onBackspace={onBack}
@@ -380,17 +524,26 @@ export default function LogScreen() {
             showDot={fieldKind(active) === "load"}
             onClear={() => commit(active, "")}
           />
-          <Pressable onPress={() => setActive(null)} style={st.done}>
-            <Text style={st.doneText}>Done</Text>
-          </Pressable>
+          <View style={st.padActions}>
+            <Button label="Done" variant="ghost" onPress={() => setActive(null)} style={{ flex: 1 }} />
+            <Button
+              label={isLastField ? "Finish" : "Next →"}
+              onPress={goToNextField}
+              style={{ flex: 1 }}
+            />
+          </View>
         </View>
       )}
 
-      {/* Sits at the very bottom of an edge-to-edge screen, so it must clear
-          the Android nav bar itself — nothing else is below it. */}
-      <View style={[st.footer, { paddingBottom: space.lg + insets.bottom }]}>
-        <Button label={saving ? "Saving…" : "Save"} onPress={onSave} disabled={!canSave || saving} />
-      </View>
+      {/* Hidden while the pad is open. Save is not the next thing you want
+          mid-entry, and the height it frees is what stops the pad covering the
+          field being typed into. Sits at the bottom of an edge-to-edge screen,
+          so it clears the Android nav bar itself. */}
+      {!active && (
+        <View style={[st.footer, { paddingBottom: space.lg + insets.bottom }]}>
+          <Button label={saving ? "Saving…" : "Save"} onPress={onSave} disabled={!canSave || saving} />
+        </View>
+      )}
 
       {prs && <PrToast prs={prs} unit={unit} onDone={() => router.back()} />}
     </View>
@@ -516,8 +669,7 @@ const st = StyleSheet.create({
   },
 
   pad: { paddingTop: space.md, backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.line },
-  done: { alignItems: "center", paddingVertical: space.sm },
-  doneText: { color: colors.textDim, fontSize: t.body, fontWeight: "700" },
+  padActions: { flexDirection: "row", gap: space.md, paddingHorizontal: space.lg, paddingTop: space.xs },
 
   footer: {
     padding: space.lg,

@@ -1,12 +1,13 @@
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button, Chip, ChipRow } from "../components/ui";
 import { db } from "../lib/db";
 import { useDraft } from "../lib/draft";
 import { buildExportDoc, exportFilename } from "../lib/export";
+import { loadSampleData, removeSampleData, sampleDataCount } from "../lib/sample";
 import { colors, radius, space, type as t } from "../lib/theme";
 
 export default function Settings() {
@@ -15,12 +16,29 @@ export default function Settings() {
   const setUnit = useDraft((s) => s.setUnit);
   const [counts, setCounts] = useState<{ sessions: number; blocks: number; sets: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [samples, setSamples] = useState(0);
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     buildExportDoc(db)
       .then((d) => setCounts(d.counts))
       .catch(() => setCounts(null));
+    sampleDataCount(db).then(setSamples).catch(() => setSamples(0));
   }, []);
+
+  useEffect(refresh, [refresh]);
+
+  const withBusy = async (fn: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fn();
+      refresh();
+    } catch (e: any) {
+      Alert.alert("Failed", String(e?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   /**
    * Writes the JSON to the cache directory and hands it to the share sheet.
@@ -88,6 +106,40 @@ export default function Settings() {
           style={{ marginTop: space.md }}
         />
       </View>
+
+      {/* Development only — never reachable in a release build. */}
+      {__DEV__ && (
+        <>
+          <Text style={st.label}>Sample data</Text>
+          <View style={st.card}>
+            <Text style={st.body}>
+              {samples > 0 ? `${samples} sample sessions loaded.` : "None loaded."}
+            </Text>
+            <Text style={[st.note, st.noteFlush]}>
+              Twelve weeks of plausible training, for looking at the charts and
+              the activity screen before there is real history. Every session it
+              creates is labelled, and removing them touches nothing you logged
+              yourself.
+            </Text>
+            <View style={{ flexDirection: "row", gap: space.md, marginTop: space.md }}>
+              <Button
+                label={busy ? "Working…" : "Load"}
+                variant="ghost"
+                disabled={busy || samples > 0}
+                style={{ flex: 1 }}
+                onPress={() => withBusy(async () => { await loadSampleData(db); })}
+              />
+              <Button
+                label="Remove"
+                variant="danger"
+                disabled={busy || samples === 0}
+                style={{ flex: 1 }}
+                onPress={() => withBusy(async () => { await removeSampleData(db); })}
+              />
+            </View>
+          </View>
+        </>
+      )}
 
       <Text style={st.label}>About</Text>
       <Text style={st.note}>

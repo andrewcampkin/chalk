@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { format, parseISO } from "date-fns";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
@@ -60,13 +61,18 @@ export default function SessionDetail() {
       contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl + insets.bottom }}
     >
       {data.blocks.map((b) => (
-        <View key={b.id} style={st.block}>
+        <Pressable
+          key={b.id}
+          onPress={() => router.push(`/log?edit=${b.id}`)}
+          style={({ pressed }) => [st.block, pressed && { opacity: 0.7 }]}
+        >
           <FeelRule feel={b.feel} />
           <View style={st.head}>
             <Text style={st.kind}>{b.kind === "strength" ? "STRENGTH" : "WOD"}</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
               {b.capped && <Text style={st.capped}>CAPPED</Text>}
               <FeelTag feel={b.feel} />
+              <Ionicons name="chevron-forward" size={15} color={colors.textFaint} />
             </View>
           </View>
           <Text style={st.title}>{b.title}</Text>
@@ -109,7 +115,7 @@ export default function SessionDetail() {
           </View>
 
           {b.notes ? <Text style={st.notes}>{b.notes}</Text> : null}
-        </View>
+        </Pressable>
       ))}
 
       <Button

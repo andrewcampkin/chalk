@@ -66,7 +66,31 @@ npm test         # 63 tests
 npm run typecheck
 ```
 
-To produce a sideloadable APK, `eas.json` has an APK `preview` profile.
+## Building an APK to sideload
+
+```bash
+npm install -g eas-cli
+eas login
+eas init
+eas build --platform android --profile preview
+```
+
+`eas init` writes `extra.eas.projectId` into `app.json` — commit that. The build
+prints a link; open it on the phone and install, allowing "install unknown
+apps" for whichever app opens it.
+
+Use the **preview** profile. It is the only one that produces an installable
+APK: `production` builds an Android App Bundle, which is for the Play Store and
+cannot be sideloaded. A universal APK covers the arm64 devices this targets.
+
+Two things worth knowing before the second build:
+
+- **Keep the keystore EAS generates.** Android will only install an update over
+  an existing app if both are signed with the same key. Lose it, or let a new
+  one be generated, and the only way to install is to uninstall first.
+- **Uninstalling deletes the database.** The log lives in the app's private
+  storage and nothing is backed up anywhere. Export from Settings before any
+  uninstall.
 
 ## Gotchas
 

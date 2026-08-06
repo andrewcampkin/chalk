@@ -75,6 +75,11 @@ eas init
 eas build --platform android --profile preview
 ```
 
+The package is `eas-cli` and its binary is `eas`. Do not run `npx eas` — an
+unrelated placeholder package called `eas` exists on npm, so npx fetches that
+instead and fails with "could not determine executable to run". Use
+`npx eas-cli …` if you would rather not install it globally.
+
 `eas init` writes `extra.eas.projectId` into `app.json` — commit that. The build
 prints a link; open it on the phone and install, allowing "install unknown
 apps" for whichever app opens it.

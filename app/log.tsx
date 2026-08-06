@@ -408,6 +408,10 @@ export default function LogScreen() {
             </ChipRow>
 
             <Text style={st.label}>Sets</Text>
+            <Text style={st.hint}>
+              W marks a warm-up, ✕ a failed rep. Both are kept, and both are
+              left out of your records.
+            </Text>
             {draft.sets.map((set, i) => (
               <View
                 key={set.key}
@@ -430,10 +434,18 @@ export default function LogScreen() {
                   onPress={setActive}
                   wide
                 />
-                <Pressable onPress={() => patchSet(set.key, { isWarmup: !set.isWarmup })} hitSlop={8} style={st.flag}>
+                <Pressable
+                  onPress={() => patchSet(set.key, { isWarmup: !set.isWarmup })}
+                  hitSlop={8}
+                  style={[st.flag, set.isWarmup && st.flagBoxOn]}
+                >
                   <Text style={[st.flagText, set.isWarmup && st.flagOn]}>W</Text>
                 </Pressable>
-                <Pressable onPress={() => patchSet(set.key, { isFailed: !set.isFailed })} hitSlop={8} style={st.flag}>
+                <Pressable
+                  onPress={() => patchSet(set.key, { isFailed: !set.isFailed })}
+                  hitSlop={8}
+                  style={[st.flag, set.isFailed && st.flagBoxOn]}
+                >
                   <Text style={[st.flagText, set.isFailed && st.flagOn]}>✕</Text>
                 </Pressable>
                 {draft.sets.length > 1 && (
@@ -609,6 +621,14 @@ const st = StyleSheet.create({
     paddingVertical: space.xs,
   },
   movName: { flex: 1, color: colors.text, fontSize: t.body, fontWeight: "600" },
+  hint: {
+    color: colors.textFaint,
+    fontSize: t.label,
+    lineHeight: 18,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.sm,
+    marginTop: -space.xs,
+  },
   setNo: { width: 18, color: colors.textFaint, fontSize: t.label, fontWeight: "700" },
   remove: { padding: space.xs },
   flag: {
@@ -621,7 +641,10 @@ const st = StyleSheet.create({
     borderColor: colors.line,
   },
   flagText: { color: colors.textFaint, fontSize: t.label, fontWeight: "700" },
-  flagOn: { color: colors.accent },
+  // Filled rather than coloured. Chalk yellow means "record" and nothing else
+  // (invariant 10); a lit-up warm-up flag would read as an achievement.
+  flagOn: { color: colors.text },
+  flagBoxOn: { backgroundColor: colors.surfaceHi, borderColor: colors.textDim },
 
   slot: {
     minWidth: 62,
@@ -635,9 +658,11 @@ const st = StyleSheet.create({
     justifyContent: "center",
   },
   slotWide: { minWidth: 78 },
-  slotOn: { borderColor: colors.accent, backgroundColor: colors.surfaceHi },
+  // The field being typed into is not an achievement. It was showing chalk
+  // yellow, which made every number look like a record while it was entered.
+  slotOn: { borderColor: colors.textDim, backgroundColor: colors.surfaceHi },
   slotValue: { color: colors.text, fontSize: t.body, fontWeight: "700", fontVariant: ["tabular-nums"] },
-  slotValueOn: { color: colors.accent },
+  slotValueOn: { color: colors.text },
   slotLabel: { color: colors.textFaint, fontSize: t.tiny },
 
   scoreRow: { flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg },

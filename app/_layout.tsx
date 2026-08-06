@@ -50,7 +50,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="log"
-          options={{ presentation: "modal", title: "Log", animation: "slide_from_bottom" }}
+          options={{ presentation: "modal", title: "New block", animation: "slide_from_bottom" }}
         />
         <Stack.Screen name="settings" options={{ title: "Settings" }} />
         <Stack.Screen name="session/[id]" options={{ title: "Session" }} />

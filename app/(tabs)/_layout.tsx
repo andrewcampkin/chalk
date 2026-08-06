@@ -32,7 +32,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Log",
+          title: "Today",
           tabBarIcon: ({ color, size }) => <Ionicons name="today-outline" color={color} size={size} />,
           headerRight: () => (
             <Pressable

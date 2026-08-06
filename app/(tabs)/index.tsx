@@ -40,9 +40,9 @@ export default function Today() {
           <View>
             <Text style={st.date}>{format(new Date(), "EEEE d MMMM")}</Text>
             <View style={st.actions}>
-              <Button label="Log WOD" onPress={() => open("wod")} style={st.action} />
+              <Button label="WOD ＋" onPress={() => open("wod")} style={st.action} />
               <Button
-                label="Log strength"
+                label="Strength ＋"
                 variant="ghost"
                 onPress={() => open("strength")}
                 style={st.action}

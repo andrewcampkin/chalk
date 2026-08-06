@@ -84,8 +84,8 @@ enhancement, never a gate.
 
 ## Screens
 
-**Log.** Opens on today with one primary action: *Log WOD* or *Log strength*.
-Below, recent sessions, each showing a dot per block coloured by how it felt.
+**Today.** Opens on today with two actions: *WOD ＋* and *Strength ＋*. Below,
+recent sessions, each showing a dot per block coloured by how it felt.
 
 **Logging a block.** Date first (Today and Yesterday one tap each, a calendar
 for anything older), then the format, then movements from the recent chips,

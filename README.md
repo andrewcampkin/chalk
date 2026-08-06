@@ -64,7 +64,7 @@ Open the printed `exp://` URL in Expo Go. `expo-sqlite` runs inside Expo Go, so
 the whole app including the database works without a custom build.
 
 ```bash
-npm test         # 108 tests
+npm test
 npm run typecheck
 ```
 

@@ -155,8 +155,8 @@ movements from crossfit.com text, plate-loading calculator, Health write.
 
 ## Working agreements
 
-- Run `npx tsc --noEmit` and `npm test` before saying anything is done. 63 tests;
-  they run against the real generated migration, not a hand-written copy of it.
+- Run `npx tsc --noEmit` and `npm test` before saying anything is done. The
+  tests run against the real generated migration, not a hand-written copy of it.
 - Test `score.ts`, `queries.ts` and `dates.ts` properly; they hold all the logic
   worth getting wrong. UI can be tested by hand.
 - Migrations are append-only. Real data now exists on the phone — generate an

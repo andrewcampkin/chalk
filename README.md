@@ -41,7 +41,9 @@ recently-used movements are always one tap away.
   It shows up as colour everywhere history appears.
 - **Search** movements, named benchmarks, and the full text of anything logged.
 - **Records** derived automatically, with the moment surfaced as it happens.
-- **Backup** to a self-describing JSON file via the share sheet.
+- **Backup and restore.** Export writes a self-describing JSON file to the
+  share sheet; restore reads one back, rebuilding records from the workouts
+  rather than trusting the file.
 
 105 movements and 51 benchmark WODs ship preloaded, so nothing needs typing on
 day one. Logging "Fran" also tags thruster and pull-up, which is what makes
@@ -62,7 +64,7 @@ Open the printed `exp://` URL in Expo Go. `expo-sqlite` runs inside Expo Go, so
 the whole app including the database works without a custom build.
 
 ```bash
-npm test         # 63 tests
+npm test         # 108 tests
 npm run typecheck
 ```
 

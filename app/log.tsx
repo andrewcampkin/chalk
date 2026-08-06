@@ -408,10 +408,7 @@ export default function LogScreen() {
             </ChipRow>
 
             <Text style={st.label}>Sets</Text>
-            <Text style={st.hint}>
-              W marks a warm-up, ✕ a failed rep. Both are kept, and both are
-              left out of your records.
-            </Text>
+            <Text style={st.hint}>✕ marks a failed rep. It won't count towards records.</Text>
             {draft.sets.map((set, i) => (
               <View
                 key={set.key}
@@ -434,13 +431,6 @@ export default function LogScreen() {
                   onPress={setActive}
                   wide
                 />
-                <Pressable
-                  onPress={() => patchSet(set.key, { isWarmup: !set.isWarmup })}
-                  hitSlop={8}
-                  style={[st.flag, set.isWarmup && st.flagBoxOn]}
-                >
-                  <Text style={[st.flagText, set.isWarmup && st.flagOn]}>W</Text>
-                </Pressable>
                 <Pressable
                   onPress={() => patchSet(set.key, { isFailed: !set.isFailed })}
                   hitSlop={8}

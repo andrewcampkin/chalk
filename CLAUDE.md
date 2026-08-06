@@ -103,7 +103,9 @@ Break these and the data goes quietly wrong, which is worse than a crash.
    there is no sixth table.
 
 5. **Warm-ups and failed reps are flagged, not deleted.** They are excluded from
-   PR queries by the flags. Deleting them loses volume data.
+   PR queries by the flags. Deleting them loses volume data. Only the failed
+   flag has a control in the log form; `is_warmup` is still honoured everywhere
+   and is set by imported files, so never assume it is always false.
 
 6. **Capped (DNF) scores never set a record.** There is deliberately no Rx /
    scaled concept anywhere in the app — it was removed on 2026-08-06. This is a

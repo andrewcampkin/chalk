@@ -71,7 +71,7 @@ export default function Settings() {
                   "Restored",
                   `${summary.sessions} sessions, ${summary.blocks} blocks.` +
                     (summary.movementsCreated
-                      ? `\n${summary.movementsCreated} movement(s) added that this install did not have.`
+                      ? `\n${summary.movementsCreated} new movement(s) added.`
                       : ""),
                 );
               }),
@@ -137,10 +137,7 @@ export default function Settings() {
         <Chip label="kg" selected={unit === "kg"} onPress={() => setUnit("kg")} />
         <Chip label="lb" selected={unit === "lb"} onPress={() => setUnit("lb")} />
       </ChipRow>
-      <Text style={st.note}>
-        Loads are always stored in grams. This only changes how they are shown,
-        so switching never rewrites anything you have logged.
-      </Text>
+      <Text style={st.note}>Changes how weights are shown. Nothing you have logged is altered.</Text>
 
       <Text style={st.label}>Backup</Text>
       <View style={st.card}>
@@ -152,8 +149,7 @@ export default function Settings() {
             : "Reading the log…"}
         </Text>
         <Text style={[st.note, st.noteFlush]}>
-          One JSON file holding every session, with the workout text exactly as
-          you wrote it. Readable on its own, without this app.
+          One file holding every session, readable on its own without this app.
         </Text>
         <Button
           label={busy ? "Preparing…" : "Export a backup"}
@@ -166,10 +162,7 @@ export default function Settings() {
       <Text style={st.label}>Restore</Text>
       <View style={st.card}>
         <Text style={[st.note, st.noteFlush]}>
-          Reads a backup file back in. This replaces everything currently
-          logged, rather than merging — a backup answers "put it back how it
-          was". Records are rebuilt from the workouts, never taken from the
-          file.
+          Replaces everything logged with the contents of a backup file.
         </Text>
         <Button
           label={busy ? "Working…" : "Restore from a backup"}
@@ -189,10 +182,8 @@ export default function Settings() {
               {samples > 0 ? `${samples} sample sessions loaded.` : "None loaded."}
             </Text>
             <Text style={[st.note, st.noteFlush]}>
-              Twelve weeks of plausible training, for looking at the charts and
-              the activity screen before there is real history. Every session it
-              creates is labelled, and removing them touches nothing you logged
-              yourself.
+              Twelve weeks of made-up training, to fill the charts. Removing it
+              leaves your own sessions alone.
             </Text>
             <View style={{ flexDirection: "row", gap: space.md, marginTop: space.md }}>
               <Button
@@ -216,8 +207,8 @@ export default function Settings() {
 
       <Text style={st.label}>About</Text>
       <Text style={st.note}>
-        Chalk keeps everything on this phone. There is no account, no server and
-        nothing leaves the device unless you export it yourself.
+        Everything stays on this phone. No account, and nothing leaves the
+        device unless you export it.
       </Text>
     </ScrollView>
   );

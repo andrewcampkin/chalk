@@ -2,8 +2,8 @@
 
 A personal CrossFit logbook. One user, sideloaded onto an Android phone.
 
-It replaces SugarWOD, which only lets you post a score against the class's
-programmed workout. Chalk lets you record anything you actually did.
+Most gym logging apps only let you post a score against the class's programmed
+workout. Chalk records anything you actually did.
 
 <!-- The mark is a tally group: four strokes and a diagonal. -->
 

@@ -126,21 +126,27 @@ Break these and the data goes quietly wrong, which is worse than a crash.
 
 ---
 
-## Build order
+## v1 — shipped and in use
 
-1. ~~**Schema + seed.**~~ Done. 105 movements + 51 benchmarks, `validateSeed()`
-   under test.
-2. ~~**Log a session.**~~ Done. `app/log.tsx`. Structured entry *generates* the
-   verbatim text rather than demanding it — pick a format, tap movements from
-   the recent chips, enter one score on the custom pad.
-3. ~~**Session history.**~~ Done. `app/(tabs)/index.tsx`, `app/session/[id].tsx`.
-4. ~~**Movement search.**~~ Done. `app/(tabs)/search.tsx` plus
-   `app/movement/[id].tsx`, which shows rep maxes *and* WOD appearances.
-5. ~~**PRs.**~~ Done bar the chart. `PrToast` shows the record at the moment it
-   is set.
-6. ~~**Activity.**~~ Done. Weekly split, modality mix, neglect list.
-7. ~~**Export.**~~ Done. `lib/export.ts` builds the document, `app/settings.tsx`
-   writes it to the cache dir and hands it to the share sheet.
+The whole original build order is done: schema and seed, logging, session
+history, movement search, records, activity, and JSON export. Added after that
+first pass, and equally part of v1:
+
+- **Per-block feel rating.** `lib/feel.ts`, invariants 9 and 10.
+- **Backdating.** `components/DateField.tsx`, all date maths via `lib/dates.ts`.
+- **Movement-appropriate fields.** `lib/inputs.ts` — ergs ask for metres and
+  calories, everything else for reps and load.
+- **Load chart.** `components/LoadChart.tsx`, points coloured by feel.
+
+Where things live, when picking up a thread:
+
+| Concern | File |
+| --- | --- |
+| What a score integer means | `db/score.ts` |
+| Record derivation | `db/queries.ts`, `candidatesForBlock()` |
+| Draft → rows, benchmark auto-tagging | `lib/save.ts` |
+| The log form | `app/log.tsx` |
+| Backup document | `lib/export.ts` |
 
 Later, only if it earns its place: rest timer, a paste-parser that pre-tags
 movements from crossfit.com text, plate-loading calculator, Health write.
@@ -149,12 +155,17 @@ movements from crossfit.com text, plate-loading calculator, Health write.
 
 ## Working agreements
 
-- Run `npx tsc --noEmit` before saying anything is done.
-- Test `score.ts` and `queries.ts` properly; they hold all the logic worth
-  getting wrong. UI can be tested by hand.
-- Migrations are append-only once anything real has been logged.
+- Run `npx tsc --noEmit` and `npm test` before saying anything is done. 63 tests;
+  they run against the real generated migration, not a hand-written copy of it.
+- Test `score.ts`, `queries.ts` and `dates.ts` properly; they hold all the logic
+  worth getting wrong. UI can be tested by hand.
+- Migrations are append-only. Real data now exists on the phone — generate an
+  incremental migration, never regenerate `0000`.
 - Comments explain *why*. The schema comments are load-bearing — keep them
   current when the model changes.
+- Dependencies are pinned exactly and install scripts are off. After changing
+  Node version, run `npm run rebuild:native` or the suite dies with
+  `Worker exited unexpectedly` and no failing test to point at.
 
 ---
 
@@ -185,6 +196,9 @@ truth able to disagree with the blocks it came from.
 - **Import.** Export exists; nothing reads the file back. When writing it, seed
   first, insert sessions/blocks/sets, then `rebuildAllPrs()` — never trust a
   `prs` block in the file.
-- **Nothing has run on a physical device yet.** Bundle, typecheck and tests are
-  green; on-device behaviour is unverified. The load chart in particular has
-  never been rendered — its axis scaling needs a real look.
+- **The load chart has never been rendered with real data.** It needs two or
+  more sessions of the same lift before it draws at all. Its axis scaling
+  (`yAxisOffset` plus a derived `maxValue`) is the part most likely to look
+  wrong the first time it appears.
+- **`blocks.compare_to_block_id` is dead.** Nothing writes or reads it. Delete
+  it if it is still unused when the next migration comes round.

@@ -171,7 +171,13 @@ export const blocks = sqliteTable(
     feel: integer("feel"),
 
     timeCapSec: integer("time_cap_sec"),
-    /** crossfit.com's "Compare to 260717" — self-referential, set manually or by the app. */
+    /**
+     * crossfit.com's "Compare to 260717" — a pointer at the last time the same
+     * thing was programmed. NOT YET USED: nothing writes or reads this, because
+     * movement search already answers "when did I last do this" well enough.
+     * Kept because the column is free and the feature is plausible; delete it
+     * if it is still unused when the next migration comes round.
+     */
     compareToBlockId: integer("compare_to_block_id"),
     notes: text("notes"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
@@ -257,9 +263,10 @@ export const prs = sqliteTable(
       enum: ["load", "time", "reps", "rounds_reps", "distance"],
     }).notNull(),
     /**
-     * Which record this is. "1", "3", "5", "10" for rep maxes; "rx" for a
-     * benchmark time at Rx; "amrap" for a max-rounds effort. Keeping it a
-     * string means a new record type never needs a migration.
+     * Which record this is. The rep count ("1", "3", "5", "10") for a rep max;
+     * "best" for a benchmark scored on time or reps; "amrap" for a max-rounds
+     * effort. Keeping it a string means a new record type never needs a
+     * migration. Written in db/queries.ts, candidatesForBlock().
      */
     repScheme: text("rep_scheme").notNull(),
     /** Same units as blocks.scoreValue / blockMovements.loadG. */

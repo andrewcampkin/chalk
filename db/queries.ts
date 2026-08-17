@@ -140,6 +140,11 @@ export async function searchRawText(db: DB, term: string, limit = 50) {
  * The date must be correlated with the winning load, not aggregated alongside
  * it — a plain `max(date)` reports the most recent session for the rep count,
  * which stamps a January PR with a June date.
+ *
+ * Strength blocks only, which is what candidatesForBlock already does for load
+ * records. Twenty-one thrusters at 43kg in a Fran is prescribed volume, not an
+ * attempt at a 21-rep max — counting it would put a rep max on this screen that
+ * the records screen refuses to show, and the two would disagree.
  */
 export async function repMaxes(db: DB, movementId: number) {
   return db.all<{ reps: number; loadG: number; date: string; blockId: number }>(sql`
@@ -151,6 +156,7 @@ export async function repMaxes(db: DB, movementId: number) {
     join blocks b   on b.id = bm.block_id
     join sessions s on s.id = b.session_id
     where bm.movement_id = ${movementId}
+      and b.kind = 'strength'
       and bm.is_warmup = 0
       and bm.is_failed = 0
       and bm.load_g is not null
@@ -167,6 +173,10 @@ export async function repMaxes(db: DB, movementId: number) {
  * Carries `feel` so each point can be coloured by how that day went. A load
  * that stopped moving while the rating slid is a different problem from one
  * that stalled while everything still felt fine.
+ *
+ * Strength blocks only, for the same reason as repMaxes. A metcon thruster at
+ * 43kg plotted against strength thrusters at 80kg is not a dip in progress, it
+ * is a different question — and it would make the line unreadable.
  */
 export async function topSetsOverTime(db: DB, movementId: number, limit = 200) {
   return db.all<{
@@ -183,6 +193,7 @@ export async function topSetsOverTime(db: DB, movementId: number, limit = 200) {
     join blocks b   on b.id = bm.block_id
     join sessions s on s.id = b.session_id
     where bm.movement_id = ${movementId}
+      and b.kind = 'strength'
       and bm.is_warmup = 0 and bm.is_failed = 0
       and bm.load_g is not null
     group by b.id

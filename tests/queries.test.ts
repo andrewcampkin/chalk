@@ -9,6 +9,7 @@ import {
   repMaxes,
   resolveMovements,
   searchRawText,
+  topSetsOverTime,
   staleMovements,
 } from "../db/queries";
 import { blockMovements, blocks, movements, prs, sessions } from "../db/schema";
@@ -189,6 +190,61 @@ describe("full-text search", () => {
     const hits = await searchRawText(db, "pull-up");
     expect(hits.length).toBe(1);
     expect(await searchRawText(db, "vest")).toHaveLength(1);
+  });
+});
+
+describe("rep maxes come from strength work", () => {
+  /**
+   * Twenty-one thrusters at 43kg in a Fran is prescribed volume, not an attempt
+   * at a 21-rep max. candidatesForBlock already refuses to make a record of it,
+   * so the movement screen must refuse too — otherwise it shows a rep max the
+   * records screen will not.
+   */
+  it("ignores a loaded WOD movement", async () => {
+    const thruster = await idOf("thruster");
+
+    const [s1] = await db.insert(sessions).values({ date: "2026-06-01" }).returning();
+    const [wod] = await db
+      .insert(blocks)
+      .values({
+        sessionId: s1.id, kind: "wod", format: "for_time", rounds: 3,
+        rawText: "21-15-9", scoreType: "time", scoreValue: 252,
+      })
+      .returning();
+    await db.insert(blockMovements).values(
+      [21, 15, 9].map((reps, i) => ({
+        blockId: wod.id, movementId: thruster, setNumber: i + 1, reps, loadG: 43_000,
+      })),
+    );
+
+    expect(await repMaxes(db, thruster)).toHaveLength(0);
+    expect(await topSetsOverTime(db, thruster)).toHaveLength(0);
+
+    const [s2] = await db.insert(sessions).values({ date: "2026-06-08" }).returning();
+    const [lift] = await db
+      .insert(blocks)
+      .values({ sessionId: s2.id, kind: "strength", format: "sets", rawText: "thrusters", scoreType: "load" })
+      .returning();
+    await db
+      .insert(blockMovements)
+      .values({ blockId: lift.id, movementId: thruster, setNumber: 1, reps: 3, loadG: 80_000 });
+
+    // The strength set still counts, and the metcon has not crept in beside it.
+    const maxes = await repMaxes(db, thruster);
+    expect(maxes.map((m: any) => [m.reps, m.loadG])).toEqual([[3, 80_000]]);
+    expect(await topSetsOverTime(db, thruster)).toHaveLength(1);
+  });
+
+  it("still finds the movement in both, which is a different question", async () => {
+    const thruster = await idOf("thruster");
+    const [s] = await db.insert(sessions).values({ date: "2026-06-01" }).returning();
+    const [wod] = await db
+      .insert(blocks)
+      .values({ sessionId: s.id, kind: "wod", format: "for_time", rawText: "21-15-9", scoreType: "time" })
+      .returning();
+    await db.insert(blockMovements).values({ blockId: wod.id, movementId: thruster, reps: 21 });
+
+    expect(await blocksForMovement(db, thruster)).toHaveLength(1);
   });
 });
 

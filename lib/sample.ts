@@ -65,17 +65,116 @@ const DEADLIFT: Plan = {
   feel: [3, null, null, 4, null, null, 3, null, null, 4, null, 5],
 };
 
-/** Named workouts, so search and the records list have something to show. */
-const BENCHMARKS: { slug: string; week: number; seconds: number; feel: number }[] = [
-  { slug: "fran", week: 1, seconds: 340, feel: 2 },
-  { slug: "fran", week: 6, seconds: 289, feel: 3 },
-  { slug: "fran", week: 11, seconds: 252, feel: 5 },
-  { slug: "helen", week: 3, seconds: 748, feel: 3 },
-  { slug: "helen", week: 9, seconds: 705, feel: 4 },
-  { slug: "grace", week: 7, seconds: 402, feel: 2 },
+/** What one movement does across the rounds of a sample WOD. */
+type Part = {
+  slug: string;
+  /** One per round. A single value is repeated across them. */
+  reps?: number[];
+  distanceM?: number[];
+  loadG?: number;
+};
+
+type Wod = {
+  title: string;
+  /** Set when it is a named workout, so the benchmark gets tagged. */
+  benchmark?: string;
+  rounds: number;
+  parts: Part[];
+  rawText: string;
+};
+
+/**
+ * Named workouts, so search and the records list have something to show.
+ *
+ * Fran carries its real 21-15-9 rather than a flat list of component tags: a
+ * round is its own row now, and the sample is the only place most screens get
+ * a ladder to render before the user has logged one.
+ */
+const FRAN: Wod = {
+  title: "Fran",
+  benchmark: "fran",
+  rounds: 3,
+  parts: [
+    { slug: "thruster", reps: [21, 15, 9], loadG: 43_000 },
+    { slug: "pull-up", reps: [21, 15, 9] },
+  ],
+  rawText: '"Fran"\n21-15-9 reps for time:\nThruster (43 kg)\nPull-up',
+};
+
+const HELEN: Wod = {
+  title: "Helen",
+  benchmark: "helen",
+  rounds: 3,
+  parts: [
+    { slug: "run", distanceM: [400, 400, 400] },
+    { slug: "kettlebell-swing", reps: [21, 21, 21], loadG: 24_000 },
+    { slug: "pull-up", reps: [12, 12, 12] },
+  ],
+  rawText: '"Helen"\n3 rounds for time:\n400 m Run\n21 Kettlebell Swing (24 kg)\n12 Pull-up',
+};
+
+const GRACE: Wod = {
+  title: "Grace",
+  benchmark: "grace",
+  rounds: 1,
+  parts: [{ slug: "clean-and-jerk", reps: [30], loadG: 60_000 }],
+  rawText: '"Grace"\nFor time:\n30 Clean and Jerk (60 kg)',
+};
+
+/** An unnamed descending ladder, which is most of what a class actually runs. */
+const LADDER: Wod = {
+  title: "Deadlift + Burpee",
+  rounds: 3,
+  parts: [
+    { slug: "deadlift", reps: [21, 15, 9], loadG: 100_000 },
+    { slug: "burpee", reps: [21, 15, 9] },
+  ],
+  rawText: "21-15-9 reps for time:\nDeadlift (100 kg)\nBurpee",
+};
+
+/** Movements laddering independently — one climbs, one holds. */
+const MIXED: Wod = {
+  title: "Wall-ball + Toes-to-bar",
+  rounds: 4,
+  parts: [
+    { slug: "wall-ball", reps: [10, 15, 20, 25], loadG: 9_000 },
+    { slug: "toes-to-bar", reps: [10, 10, 10, 10] },
+  ],
+  rawText:
+    "4 rounds for time:\n10-15-20-25 Wall-ball (9 kg)\n10 Toes-to-bar",
+};
+
+const TIMED: { wod: Wod; week: number; seconds: number; feel: number }[] = [
+  { wod: FRAN, week: 1, seconds: 340, feel: 2 },
+  { wod: FRAN, week: 6, seconds: 289, feel: 3 },
+  { wod: FRAN, week: 11, seconds: 252, feel: 5 },
+  { wod: HELEN, week: 3, seconds: 748, feel: 3 },
+  { wod: HELEN, week: 9, seconds: 705, feel: 4 },
+  { wod: GRACE, week: 7, seconds: 402, feel: 2 },
+  { wod: LADDER, week: 2, seconds: 512, feel: 3 },
+  { wod: LADDER, week: 10, seconds: 448, feel: 4 },
+  { wod: MIXED, week: 5, seconds: 903, feel: 2 },
 ];
 
 const CINDY = [{ week: 2, rounds: 18, feel: 3 }, { week: 8, rounds: 21, feel: 4 }];
+
+/**
+ * Both EMOM shapes, because the staged setup offers an interval as well as a
+ * clock and neither had anything to render against.
+ */
+const EMOMS = [
+  {
+    week: 4, durationMin: 16, everyMin: 1, slug: "power-clean", reps: 5,
+    loadG: 60_000, total: 80, feel: 3,
+    rawText: "EMOM 16 min:\n5 Power Clean (60 kg)",
+  },
+  {
+    week: 9, durationMin: 20, everyMin: 2, slug: "thruster", reps: 8,
+    loadG: 40_000, total: 80, feel: 4,
+    rawText: "Every 2 min for 20 min:\n8 Thruster (40 kg)",
+  },
+];
+
 const RUNS = [
   { week: 0, metres: 5000, seconds: 1500, feel: 3 },
   { week: 4, metres: 5000, seconds: 1452, feel: 4 },
@@ -182,31 +281,29 @@ export async function loadSampleData(db: DB): Promise<{ sessions: number; blocks
     }
   }
 
-  // ---- benchmarks ---------------------------------------------------------
-  for (const b of BENCHMARKS) {
-    const benchmarkId = ids[b.slug];
-    if (!benchmarkId) continue;
-    const components = COMPONENTS[b.slug] ?? [];
+  // ---- for-time workouts, benchmark and otherwise --------------------------
+  for (const t of TIMED) {
+    const rows = roundRows(ids, t.wod.parts, t.wod.rounds);
+    if (!rows.length) continue;
     await addBlock(
-      dateFor(b.week, 3),
+      dateFor(t.week, 3),
       {
         sessionId: 0,
         kind: "wod",
-        title: titleFor(b.slug),
-        benchmarkId,
-        rawText: `"${titleFor(b.slug)}"`,
+        title: t.wod.title,
+        benchmarkId: t.wod.benchmark ? (ids[t.wod.benchmark] ?? null) : null,
+        rawText: t.wod.rawText,
         format: "for_time",
+        rounds: t.wod.rounds,
         scoreType: "time",
-        scoreValue: b.seconds,
-        feel: b.feel,
+        scoreValue: t.seconds,
+        feel: t.feel,
       },
-      components
-        .map((slug, i) => ({ blockId: 0, movementId: ids[slug], position: i }))
-        .filter((r) => r.movementId != null),
+      rows,
     );
   }
 
-  // ---- an AMRAP and some running -----------------------------------------
+  // ---- an AMRAP, two EMOMs and some running -------------------------------
   for (const c of CINDY) {
     const benchmarkId = ids["cindy"];
     if (!benchmarkId) continue;
@@ -219,15 +316,45 @@ export async function loadSampleData(db: DB): Promise<{ sessions: number; blocks
         benchmarkId,
         rawText: '"Cindy"\n20 min AMRAP:\n5 Pull-up\n10 Push-up\n15 Air Squat',
         format: "amrap",
+        // An AMRAP describes one round however many times you get through it,
+        // so there is no round count — the clock is the shape.
+        durationMin: 20,
         scoreType: "rounds_reps",
         scoreValue: c.rounds * 30,
         scoreRounds: c.rounds,
         scoreReps: 0,
         feel: c.feel,
       },
-      ["pull-up", "push-up", "air-squat"]
-        .map((slug, i) => ({ blockId: 0, movementId: ids[slug], position: i, reps: [5, 10, 15][i] }))
-        .filter((r) => r.movementId != null),
+      roundRows(
+        ids,
+        [
+          { slug: "pull-up", reps: [5] },
+          { slug: "push-up", reps: [10] },
+          { slug: "air-squat", reps: [15] },
+        ],
+        1,
+      ),
+    );
+  }
+
+  for (const e of EMOMS) {
+    const rows = roundRows(ids, [{ slug: e.slug, reps: [e.reps], loadG: e.loadG }], 1);
+    if (!rows.length) continue;
+    await addBlock(
+      dateFor(e.week, 6),
+      {
+        sessionId: 0,
+        kind: "wod",
+        title: e.everyMin > 1 ? `E${e.everyMin}MOM ${e.durationMin}` : `EMOM ${e.durationMin}`,
+        rawText: e.rawText,
+        format: "emom",
+        durationMin: e.durationMin,
+        everyMin: e.everyMin,
+        scoreType: "reps",
+        scoreValue: e.total,
+        feel: e.feel,
+      },
+      rows,
     );
   }
 
@@ -242,6 +369,7 @@ export async function loadSampleData(db: DB): Promise<{ sessions: number; blocks
         title: "5k run",
         rawText: "5 km Run",
         format: "for_time",
+        rounds: 1,
         scoreType: "time",
         scoreValue: r.seconds,
         feel: r.feel,
@@ -278,19 +406,42 @@ export async function sampleDataCount(db: DB): Promise<number> {
   return rows.length;
 }
 
-const COMPONENTS: Record<string, string[]> = {
-  fran: ["thruster", "pull-up"],
-  helen: ["run", "kettlebell-swing", "pull-up"],
-  grace: ["clean-and-jerk"],
-};
+/**
+ * One row per movement per round, exactly as lib/save.ts writes them —
+ * invariant 4. setNumber stays null on a single-round workout so a chipper and
+ * an AMRAP look the way they always did.
+ *
+ * A movement this install has somehow not seeded is skipped rather than
+ * inserted with a null id.
+ */
+function roundRows(
+  ids: Record<string, number>,
+  parts: Part[],
+  rounds: number,
+): (typeof blockMovements.$inferInsert)[] {
+  const out: (typeof blockMovements.$inferInsert)[] = [];
+  parts.forEach((p, position) => {
+    const movementId = ids[p.slug];
+    if (movementId == null) return;
+    for (let r = 0; r < rounds; r++) {
+      out.push({
+        blockId: 0,
+        movementId,
+        position,
+        setNumber: rounds > 1 ? r + 1 : null,
+        reps: p.reps?.[r] ?? null,
+        loadG: p.loadG ?? null,
+        distanceM: p.distanceM?.[r] ?? null,
+      });
+    }
+  });
+  return out;
+}
 
 const TITLES: Record<string, string> = {
   "back-squat": "Back Squat",
   "power-clean": "Power Clean",
   deadlift: "Deadlift",
-  fran: "Fran",
-  helen: "Helen",
-  grace: "Grace",
 };
 
 function titleFor(slug: string): string {
@@ -301,7 +452,7 @@ async function slugIds(db: DB): Promise<Record<string, number>> {
   const wanted = [
     "back-squat", "power-clean", "deadlift", "fran", "helen", "grace", "cindy",
     "thruster", "pull-up", "push-up", "air-squat", "run", "kettlebell-swing",
-    "clean-and-jerk",
+    "clean-and-jerk", "burpee", "wall-ball", "toes-to-bar",
   ];
   const rows = await db
     .select({ id: movements.id, slug: movements.slug })

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
-import { repMaxes, topSetsOverTime } from "../db/queries";
+import { blocksForMovement, repMaxes, topSetsOverTime } from "../db/queries";
 import { blockMovements, blocks, movements, prs, sessions } from "../db/schema";
 import { loadSampleData, removeSampleData, sampleDataCount, SAMPLE_LABEL } from "../lib/sample";
 import { makeTestDb, seedMovements } from "./helpers";
@@ -81,6 +81,58 @@ describe("sample data", () => {
     await loadSampleData(db);
     const rows = await db.select().from(prs);
     expect(rows.length).toBeGreaterThan(5);
+  });
+
+  it("writes Fran as the three different rounds it actually is", async () => {
+    await loadSampleData(db);
+    const thruster = await idOf("thruster");
+    const [fran] = await db.select().from(blocks).where(eq(blocks.title, "Fran"));
+
+    expect(fran.rounds).toBe(3);
+    const rows = await db
+      .select()
+      .from(blockMovements)
+      .where(eq(blockMovements.blockId, fran.id))
+      .orderBy(blockMovements.position, blockMovements.setNumber);
+    // Two movements over three rounds — six rows, not two (invariant 4).
+    expect(rows).toHaveLength(6);
+    expect(
+      rows.filter((r: any) => r.movementId === thruster).map((r: any) => [r.setNumber, r.reps]),
+    ).toEqual([[1, 21], [2, 15], [3, 9]]);
+  });
+
+  it("carries the shape on every WOD, so the stages reopen on the right answers", async () => {
+    await loadSampleData(db);
+    const wods = await db.select().from(blocks).where(eq(blocks.kind, "wod"));
+    expect(wods.length).toBeGreaterThan(10);
+    for (const w of wods) {
+      if (w.format === "for_time") expect(w.rounds).toBeGreaterThan(0);
+      // A clock, not a round count: an AMRAP or EMOM repeats until time is up.
+      if (w.format === "amrap" || w.format === "emom") {
+        expect(w.durationMin).toBeGreaterThan(0);
+        expect(w.rounds).toBeNull();
+      }
+      if (w.format === "emom") expect(w.everyMin).toBeGreaterThan(0);
+    }
+  });
+
+  it("covers all three formats, so no stage is unrepresented", async () => {
+    await loadSampleData(db);
+    const wods = await db.select().from(blocks).where(eq(blocks.kind, "wod"));
+    const formats = new Set(wods.map((w: any) => w.format));
+    expect([...formats].sort()).toEqual(["amrap", "emom", "for_time"]);
+    // Both EMOM shapes: a plain one and an E2MOM.
+    const every = wods.filter((w: any) => w.format === "emom").map((w: any) => w.everyMin);
+    expect(every.sort()).toEqual([1, 2]);
+  });
+
+  it("gives movement search WODs to find, not just strength sessions", async () => {
+    await loadSampleData(db);
+    // Job 2: pull-ups appear in Fran, Helen and Cindy and nowhere in the
+    // strength plans, so every hit here has to come from a WOD.
+    const rows = await blocksForMovement(db, await idOf("pull-up"));
+    expect(rows.length).toBeGreaterThan(3);
+    expect(rows.every((r: any) => r.kind === "wod")).toBe(true);
   });
 });
 

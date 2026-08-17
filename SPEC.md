@@ -94,6 +94,32 @@ ask for metres and calories, everything else for reps and load. Strength opens
 as a single top-set field and expands into a grid that carries the rep count
 down the rows, so only the loads need typing.
 
+Setting up a WOD is **staged**: one question on screen at a time, answered by
+rotating a single large value between two arrows that never move. There are only
+ever three places to put a thumb — back, forward, next — so the shape of a
+workout can be entered almost by feel. A row of chips would instead make you
+find the right small target among several, which is exactly what fails when you
+are on the floor and not really looking. Rotation wraps, so overshooting costs
+one tap back rather than a hunt, and finishing the last stage hands straight over
+to movement selection.
+
+A WOD is only ever three formats — **For time**, **AMRAP**, **EMOM** — because
+everything else people tried to make a format is really a number. A chipper is a
+for-time you go through once; "5 rounds for time" is one you go through five
+times. So a format only earns the stages it actually raises: rounds for a
+for-time, a clock for an AMRAP, an interval and a clock for an EMOM. Each
+rotates through the counts a class actually programmes, and each has a keypad
+escape, because no list of preset numbers holds everybody's workout — a
+two-round grinder and a 24-minute EMOM are as real as a 20-minute AMRAP.
+
+There is no rep-scheme field. A ladder's reps belong to the movements performing
+them, and a named ladder carries its own wording: logging Fran writes "21-15-9
+reps for time" from the benchmark's prescription, in CrossFit's words rather
+than retyped. Whatever the stages cannot say, the workout text says.
+
+Controls appear only where they mean something. An AMRAP ends when the clock
+does, so it is not offered a Capped / DNF flag it could never truthfully carry.
+
 Structured entry *generates* the verbatim text rather than demanding it. The
 moment it is edited by hand, generation stops overwriting it.
 

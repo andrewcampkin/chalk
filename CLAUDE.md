@@ -139,6 +139,9 @@ first pass, and equally part of v1:
 - **Movement-appropriate fields.** `lib/inputs.ts` — ergs ask for metres and
   calories, everything else for reps and load.
 - **Load chart.** `components/LoadChart.tsx`, points coloured by feel.
+- **Staged WOD setup.** `components/Stage.tsx` plus the stage machinery at the
+  top of `app/log.tsx` — see the decision below. `blocks.rounds`,
+  `duration_min`, `every_min`; header text is `wodHeader()` in `lib/draft.ts`.
 
 Where things live, when picking up a thread:
 
@@ -177,6 +180,32 @@ movements from crossfit.com text, plate-loading calculator, Health write.
 - **Sets:** a single top-set field that expands into a grid on demand. The grid
   carries the rep count down the rows so only loads need typing.
 - **No Rx / scaled.** Removed from the schema entirely. See invariant 6.
+- **Setting up a WOD is staged, not a screen of chips** (2026-08-17). One
+  question at a time — kind, format, then only the questions that format
+  raises — each answered by rotating a single large value between two 76dp
+  arrows that never move. A chip row makes you find the right small target
+  among several, which is the thing that fails when you are on the floor and
+  not really looking. Rotation wraps, so overshooting costs one tap back rather
+  than a hunt. `StageCard` and `StageTrail` in `components/Stage.tsx`.
+- **The stages hand over to the movement picker.** Finishing the last one opens
+  it automatically on a new log, because that is where you were always going.
+  Never when editing — dropping someone into a full-screen picker because they
+  reopened a block to fix its score is an ambush.
+- **A WOD has three formats: For time, AMRAP, EMOM.** Chipper and Rounds were
+  removed — both were for-time workouts wearing a different hat, and having
+  them as formats meant the round count lived in a rep-scheme string where "5
+  rounds" and `rounds` could contradict each other. The enum keeps `chipper`
+  and `intervals` for blocks already saved with them; `shownFormat()` in
+  `app/log.tsx` shows those as For time.
+- **There is no rep scheme anywhere.** A ladder's reps belong to the movements
+  performing them, and every named ladder already carries its wording on the
+  benchmark row — `draft.benchmarkPrescription` puts "21-15-9 reps for time"
+  into the generated text verbatim. An unnamed ad-hoc ladder goes in the
+  workout text, which is the source of truth regardless (invariant 1).
+- **Every number the stages rotate has a keypad escape hatch.** The presets are
+  what a class programmes, not a ceiling. Two rounds, ten rounds and a
+  24-minute EMOM were all unreachable before, which is what prompted the
+  rework. Do not add a preset without asking whether the pad already covers it.
 - **Benchmark auto-tagging is ON.** Logging "Fran" writes thruster and pull-up
   rows. This is what makes "recent pull-ups" find WODs and not just strength
   work, which is job 2. The old objection (inflated volume when scaled) died
@@ -221,5 +250,8 @@ v2 stores `{ slug, name }`. Import still reads v1.
   more sessions of the same lift before it draws at all. Its axis scaling
   (`yAxisOffset` plus a derived `maxValue`) is the part most likely to look
   wrong the first time it appears.
-- **`blocks.compare_to_block_id` is dead.** Nothing writes or reads it. Delete
-  it if it is still unused when the next migration comes round.
+- **`blocks.compare_to_block_id` is dead.** Nothing writes or reads it. It
+  survived migration 0002 deliberately: dropping a column in SQLite means
+  rebuilding the table, and doing that in the same change as a UI rework, on a
+  phone that now holds real data, is risk bought for nothing. Drop it on its
+  own, when there is nothing else in flight.

@@ -98,9 +98,12 @@ Break these and the data goes quietly wrong, which is worse than a crash.
    Never write a record that cannot be re-derived from `blocks` and
    `block_movements`. Estimated 1RMs are display-only and never persisted.
 
-4. **One row per set.** A 5×3 is five `block_movements` rows, not one row with a
-   `sets` column. This is what lets a rep max fall out of a `MAX()` and is why
-   there is no sixth table.
+4. **One row per set, and one row per round.** A 5×3 is five `block_movements`
+   rows, not one row with a `sets` column. A 21-15-9 Fran is six, because a
+   round is not always the same work. This is what lets a rep max fall out of a
+   `MAX()` and is why there is no sixth table. `set_number` carries the set for
+   strength and the round for a WOD, and is null when there is only one — so
+   never read "has a set number" as "is a strength set"; use `blocks.kind`.
 
 5. **Warm-ups and failed reps are flagged, not deleted.** They are excluded from
    PR queries by the flags. Deleting them loses volume data. Only the failed
@@ -198,10 +201,17 @@ movements from crossfit.com text, plate-loading calculator, Health write.
   and `intervals` for blocks already saved with them; `shownFormat()` in
   `app/log.tsx` shows those as For time.
 - **There is no rep scheme anywhere.** A ladder's reps belong to the movements
-  performing them, and every named ladder already carries its wording on the
-  benchmark row — `draft.benchmarkPrescription` puts "21-15-9 reps for time"
-  into the generated text verbatim. An unnamed ad-hoc ladder goes in the
-  workout text, which is the source of truth regardless (invariant 1).
+  performing them, one round at a time — see the round grid below. Named
+  ladders additionally carry their wording on the benchmark row, and
+  `draft.benchmarkPrescription` puts "21-15-9 reps for time" into the generated
+  text verbatim.
+- **The round grid fills itself in.** A new round copies the one before it, and
+  editing a round carries the change down to every later round that still
+  agreed with it. Five uniform rounds are typed once; a 21-15-9 is typed as 21,
+  15, 9 — three edits, not nine — because each entry sweeps the rounds below it
+  before being corrected in turn. A round given its own value has stopped
+  agreeing and is never overwritten again. `patchRound()` in `lib/draft.ts`;
+  the log screen mirrors the same carry-down into the keypad buffers.
 - **Every number the stages rotate has a keypad escape hatch.** The presets are
   what a class programmes, not a ceiling. Two rounds, ten rounds and a
   24-minute EMOM were all unreachable before, which is what prompted the

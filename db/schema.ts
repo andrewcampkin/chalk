@@ -14,8 +14,9 @@ import {
  *     the whiteboard or crossfit.com. Nothing is lost to the model. Structure is
  *     layered on top, never a prerequisite for logging.
  *  2. `block_movements` is the only reason movement search is fast. Every
- *     movement mentioned in a block gets a row, and one strength set gets one
- *     row — so a 5x3 power clean is five rows, and no sixth table is needed.
+ *     movement mentioned in a block gets a row per repetition of it — a set for
+ *     strength, a round for a WOD — so a 5x3 power clean is five rows, a
+ *     21-15-9 Fran is six, and no sixth table is needed.
  */
 
 /* -------------------------------------------------------------------------- */
@@ -222,10 +223,16 @@ export const blocks = sqliteTable(
 /**
  * The search index, and the set log, in one table.
  *
- * For a WOD: one row per distinct movement, carrying the prescribed load.
- * For strength: one row per SET, same movementId repeated, `setNumber`
- * incrementing. "Power clean 5x3, building" is five rows with rising loadG,
- * and the 3RM falls out of a MAX() over them.
+ * One row per movement per repetition of it, whichever kind of block it is:
+ *
+ *   strength -> one row per SET. "Power clean 5x3, building" is five rows with
+ *               rising loadG, and the 3RM falls out of a MAX() over them.
+ *   WOD      -> one row per ROUND. Fran is six rows — thruster and pull-up at
+ *               21, 15 and 9 — because a round is not always the same work and
+ *               a single "reps per round" number cannot say so.
+ *
+ * A WOD with only one round through it (a chipper, an AMRAP, an EMOM) leaves
+ * `setNumber` null, so those look exactly as they always did.
  */
 export const blockMovements = sqliteTable(
   "block_movements",
@@ -239,12 +246,16 @@ export const blockMovements = sqliteTable(
       .references(() => movements.id),
     /** Order of appearance within the block. */
     position: integer("position").notNull().default(0),
-    /** 1-based set number for strength. Null for a movement inside a WOD. */
+    /**
+     * 1-based. The set for strength, the round for a WOD. Null when there is
+     * only one of them, which is why it is not safe to read this as "this row
+     * is a strength set" — use `blocks.kind` for that.
+     */
     setNumber: integer("set_number"),
 
     /** Grams. Integer maths only — never store float kilos. */
     loadG: integer("load_g"),
-    /** Reps in this set, or per round in a WOD. */
+    /** Reps in this set, or in this round of a WOD. */
     reps: integer("reps"),
     /** Metres, for runs, rows, and carries. */
     distanceM: integer("distance_m"),

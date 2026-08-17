@@ -112,10 +112,19 @@ rotates through the counts a class actually programmes, and each has a keypad
 escape, because no list of preset numbers holds everybody's workout — a
 two-round grinder and a 24-minute EMOM are as real as a 20-minute AMRAP.
 
-There is no rep-scheme field. A ladder's reps belong to the movements performing
-them, and a named ladder carries its own wording: logging Fran writes "21-15-9
-reps for time" from the benchmark's prescription, in CrossFit's words rather
-than retyped. Whatever the stages cannot say, the workout text says.
+There is no rep-scheme field, because a rep scheme is really a statement about
+rounds. Choosing three rounds lays out three of them, and **each arrives already
+filled in from the one above**: enter round one and a uniform workout is done.
+Correcting a round carries down to the rounds that still matched it, so a
+21-15-9 is entered as 21, then 15, then 9 — three numbers, not nine — and a
+round you have given its own value is never overwritten again.
+
+That is also what makes Fran recordable as the three different rounds it
+actually is. Every movement gets a row per round, so "how many thrusters" has an
+answer. The generated text follows: a ladder every movement shares heads the
+workout the way a whiteboard writes it, "21-15-9 reps for time:", while one only
+some movements follow stays on their own lines. Whatever the grid cannot say,
+the workout text says.
 
 Controls appear only where they mean something. An AMRAP ends when the clock
 does, so it is not offered a Capped / DNF flag it could never truthfully carry.

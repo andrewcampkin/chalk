@@ -139,6 +139,30 @@ export const blocks = sqliteTable(
       ],
     }).notNull(),
 
+    /* ---- shape ---------------------------------------------------------- */
+    /**
+     * How much work, the way the whiteboard states it. Only the fields the
+     * format uses are ever set:
+     *
+     *   for_time -> rounds       (1 is a chipper, straight through)
+     *   amrap    -> durationMin  ("20 min AMRAP")
+     *   emom     -> durationMin + everyMin (everyMin 1 is a plain EMOM,
+     *                                       2 is an E2MOM, and so on)
+     *
+     * There is deliberately no rep-scheme column. A ladder's reps belong to the
+     * movements that perform them, and every named ladder already carries its
+     * prescription on the benchmark row — so a scheme string here would be a
+     * third place for "21-15-9" to live and disagree.
+     *
+     * Stored rather than re-derived because `raw_text` reads well but cannot be
+     * parsed back reliably, and reopening a block has to redisplay the stages
+     * as they were answered. `raw_text` remains the source of truth (invariant
+     * 1); these are its structured echo, and are null on anything hand-typed.
+     */
+    rounds: integer("rounds"),
+    durationMin: integer("duration_min"),
+    everyMin: integer("every_min"),
+
     /* ---- score ---------------------------------------------------------- */
     /**
      * Everything comparable is one integer, so "is this a PR" is a single

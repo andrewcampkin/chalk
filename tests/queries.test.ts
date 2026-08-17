@@ -7,6 +7,7 @@ import {
   rebuildAllPrs,
   recomputePrsForBlock,
   repMaxes,
+  resolveMovements,
   searchRawText,
   staleMovements,
 } from "../db/queries";
@@ -211,6 +212,52 @@ describe("movement history (not just PRs)", () => {
     const rows = await blocksForMovement(db, pullup);
     expect(rows).toHaveLength(1);
     expect(rows[0].date).toBe("2026-07-04");
+  });
+
+  /**
+   * Job 2, and the reason block_movements exists at all. Searching a movement
+   * has to reach WODs and strength work alike — "when did I last clean" is not
+   * a question about barbells only, and "when did I last do pull-ups" would be
+   * unanswerable if WOD rows were skipped because they carry no load.
+   */
+  it("finds a movement in both a WOD and a strength session", async () => {
+    const clean = await idOf("clean");
+
+    const [s1] = await db.insert(sessions).values({ date: "2026-07-01" }).returning();
+    const [strength] = await db
+      .insert(blocks)
+      .values({
+        sessionId: s1.id, kind: "strength", format: "sets",
+        rawText: "Clean 3x2\n80 / 85 / 90 kg", scoreType: "none",
+      })
+      .returning();
+    await db.insert(blockMovements).values([
+      { blockId: strength.id, movementId: clean, setNumber: 1, loadG: 80_000, reps: 2 },
+      { blockId: strength.id, movementId: clean, setNumber: 2, loadG: 90_000, reps: 2 },
+    ]);
+
+    const [s2] = await db.insert(sessions).values({ date: "2026-07-09" }).returning();
+    const [wod] = await db
+      .insert(blocks)
+      .values({
+        sessionId: s2.id, kind: "wod", format: "amrap", durationMin: 12,
+        rawText: "12 min AMRAP:\n3 Clean\n6 Push-up", scoreType: "rounds_reps", scoreValue: 90,
+      })
+      .returning();
+    await db.insert(blockMovements).values({ blockId: wod.id, movementId: clean, reps: 3 });
+
+    // The search box resolves the word to a movement...
+    const matches = await resolveMovements(db, "clean");
+    expect(matches.map((m: any) => m.slug)).toContain("clean");
+
+    // ...and the movement reaches both kinds of block, newest first.
+    const rows = await blocksForMovement(db, clean);
+    expect(rows.map((r: any) => [r.date, r.kind])).toEqual([
+      ["2026-07-09", "wod"],
+      ["2026-07-01", "strength"],
+    ]);
+    // The strength block still reports the heaviest working set alongside it.
+    expect(rows[1].topLoadG).toBe(90_000);
   });
 });
 

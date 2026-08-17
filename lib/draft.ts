@@ -462,11 +462,18 @@ export function generateRawText(d: Draft, unit: Unit): string {
       working.length > 1 && working.every((s) => s.reps === working[0].reps)
         ? `${working.length}x${working[0].reps ?? ""}`
         : working.map((s) => s.reps ?? "?").join("-");
-    const loads = working
-      .map((s) => (s.loadG != null ? formatLoad(s.loadG, unit).replace(/ (kg|lb)$/, "") : "—"))
-      .join(" / ");
+    // "5x5" plus "80 kg" says everything; "80 / 80 / 80 / 80 / 80 kg" says the
+    // same thing five times. Only a set that actually moved gets spelled out.
+    const uniform = working.every((s) => s.loadG === working[0]?.loadG);
+    const loads = !working.some((s) => s.loadG != null)
+      ? ""
+      : uniform
+        ? formatLoad(working[0].loadG!, unit)
+        : `${working
+            .map((s) => (s.loadG != null ? formatLoad(s.loadG, unit).replace(/ (kg|lb)$/, "") : "—"))
+            .join(" / ")} ${unit}`;
     const head = [name, scheme].filter(Boolean).join(" ");
-    return [head, loads ? `${loads} ${unit}` : ""].filter(Boolean).join("\n");
+    return [head, loads].filter(Boolean).join("\n");
   }
 
   // A benchmark states itself better than the stages can. Fran is "21-15-9

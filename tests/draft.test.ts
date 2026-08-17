@@ -155,6 +155,30 @@ describe("generateRawText", () => {
   });
 });
 
+describe("strength text", () => {
+  const withSets = (sets: { reps: number; loadG: number | null }[]): Draft =>
+    draft({
+      kind: "strength",
+      format: "sets",
+      strengthMovementName: "Front Squat",
+      sets: sets.map((s, i) => ({ key: `s${i}`, ...s, isWarmup: false, isFailed: false })),
+    });
+
+  it("says a uniform load once, not once per set", () => {
+    const d = withSets(Array.from({ length: 5 }, () => ({ reps: 5, loadG: 80_000 })));
+    expect(generateRawText(d, "kg")).toBe("Front Squat 5x5\n80 kg");
+  });
+
+  it("spells out a load that actually moved", () => {
+    const d = withSets([
+      { reps: 3, loadG: 60_000 },
+      { reps: 3, loadG: 70_000 },
+      { reps: 3, loadG: 80_000 },
+    ]);
+    expect(generateRawText(d, "kg")).toBe("Front Squat 3x3\n60 / 70 / 80 kg");
+  });
+});
+
 describe("the round grid", () => {
   const add = (name: string, id: number) => useDraft.getState().addMovement({ id, name });
   const reps0 = () => useDraft.getState().draft.movements[0].rounds.map((r) => r.reps);

@@ -141,10 +141,10 @@ export async function searchRawText(db: DB, term: string, limit = 50) {
  * it — a plain `max(date)` reports the most recent session for the rep count,
  * which stamps a January PR with a June date.
  *
- * Strength blocks only, which is what candidatesForBlock already does for load
- * records. Twenty-one thrusters at 43kg in a Fran is prescribed volume, not an
- * attempt at a 21-rep max — counting it would put a rep max on this screen that
- * the records screen refuses to show, and the two would disagree.
+ * Strength blocks only (invariant 11). Twenty-one thrusters at 43kg in a Fran
+ * is prescribed volume, not an attempt at a 21-rep max — counting it would put
+ * a rep max on this screen that the records screen refuses to show, and the two
+ * would disagree.
  */
 export async function repMaxes(db: DB, movementId: number) {
   return db.all<{ reps: number; loadG: number; date: string; blockId: number }>(sql`
@@ -174,9 +174,10 @@ export async function repMaxes(db: DB, movementId: number) {
  * that stopped moving while the rating slid is a different problem from one
  * that stalled while everything still felt fine.
  *
- * Strength blocks only, for the same reason as repMaxes. A metcon thruster at
- * 43kg plotted against strength thrusters at 80kg is not a dip in progress, it
- * is a different question — and it would make the line unreadable.
+ * Strength blocks only (invariant 11), for the same reason as repMaxes. A
+ * metcon thruster at 43kg plotted against strength thrusters at 80kg is not a
+ * dip in progress, it is a different question — and it would make the line
+ * unreadable.
  */
 export async function topSetsOverTime(db: DB, movementId: number, limit = 200) {
   return db.all<{
@@ -216,6 +217,8 @@ function candidatesForBlock(
 ): Candidate[] {
   const out: Candidate[] = [];
 
+  // Invariant 11: a load record can only come from strength work. A WOD's one
+  // contribution is the benchmark result below.
   if (block.kind === "strength") {
     for (const set of sets) {
       if (set.isWarmup || set.isFailed) continue;

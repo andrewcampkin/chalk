@@ -129,6 +129,18 @@ Break these and the data goes quietly wrong, which is worse than a crash.
     neutral → green and skips amber deliberately. Any new colour that drifts
     toward the accent devalues the only colour that is supposed to matter.
 
+11. **Load records come from strength blocks only** (2026-08-17). A WOD
+    contributes exactly one record: its benchmark time or rounds. The 42.5 kg
+    on a Fran thruster is descriptive — it belongs to the workout text and the
+    backup, and nothing derives from it, because 21 thrusters at 42.5 kg is
+    prescribed volume, not an attempt at a 21-rep max. The CrossFit Total is
+    therefore three strength blocks and not a WOD: three 1-rep lifts that
+    happen to be the day's programming.
+
+    Enforced in `candidatesForBlock()`, `repMaxes()` and `topSetsOverTime()`,
+    which must all agree. When they did not, the records screen refused a
+    metcon rep max while the movement screen displayed one.
+
 ---
 
 ## v1 — shipped and in use

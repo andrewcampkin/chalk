@@ -10,6 +10,13 @@ exclude it.
 Deployed only by **Actions ▸ Infrastructure ▸ Run workflow**, which is manual
 and defaults to `diff`. Nothing deploys on push or merge.
 
+Run `diff` and read it before every `deploy`. That is the approval step — CDK
+cannot prompt on a headless runner, so `deploy` passes `--require-approval
+never` and the judgement happens when a human reads the plan. A diff proposing
+to **replace or destroy** the bucket or the user pool is a stop sign: both are
+`RETAIN`, so CloudFormation will orphan rather than delete them, but a
+replacement still points the app at empty storage.
+
 ## One-time setup
 
 Run by a human with real credentials. The workflow cannot do any of it: the

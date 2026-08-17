@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "diff": "cdk diff",
-    "deploy": "cdk deploy --require-approval any-change"
+    "deploy": "cdk deploy --require-approval never --progress events"
   },
   "devDependencies": {
     "@types/node": "22.10.2",

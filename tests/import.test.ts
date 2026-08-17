@@ -76,10 +76,12 @@ describe("validating a backup", () => {
     expect(parseBackup('{"app":"chalk"}')).toMatchObject({ ok: false });
   });
 
-  it("refuses a file from a newer version of the app", () => {
-    const res = parseBackup(JSON.stringify({ app: "chalk", version: 99, sessions: [] }));
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.errors[0]).toContain("newer version");
+  it("refuses any version but its own", () => {
+    for (const version of [1, 2, 99]) {
+      const res = parseBackup(JSON.stringify({ app: "chalk", version, sessions: [] }));
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.errors[0]).toContain(String(EXPORT_VERSION));
+    }
   });
 
   it("refuses a block with no workout text", () => {
@@ -234,27 +236,10 @@ describe("restoring", () => {
     expect([restored.durationMin, restored.everyMin]).toEqual([15, 3]);
   });
 
-  it("reads a file written before the shape existed", async () => {
-    await logRealisticDay();
-    const doc: any = await buildExportDoc(db);
-    for (const s of doc.sessions) for (const b of s.blocks) delete b.shape;
-
-    const parsed = parseBackup(JSON.stringify(doc));
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-
-    await importBackup(db, parsed.doc);
-    // The header line still says 21-15-9 in words; only the stage's answer is
-    // lost, and the verbatim text is the source of truth anyway.
-    const [wod] = await db.select().from(blocks).where(eq(blocks.title, "Fran"));
-    expect(wod.rounds).toBeNull();
-    expect(wod.rawText).toContain("21-15-9");
-  });
-
   it("rejects a shape that is not a whole count", async () => {
     await logRealisticDay();
     const doc: any = await buildExportDoc(db);
-    doc.sessions[0].blocks[1].shape = { rounds: 2.5, durationMin: null, everyMin: null, repScheme: null };
+    doc.sessions[0].blocks[1].shape = { rounds: 2.5, durationMin: null, everyMin: null };
     expect(parseBackup(JSON.stringify(doc))).toMatchObject({ ok: false });
   });
 
@@ -292,24 +277,6 @@ describe("restoring", () => {
       .where(eq(movements.slug, "burpee-pull-up"));
     expect(restored.name).toBe("Burpee Pull-up");
     expect(restored.isCustom).toBe(true);
-  });
-
-  it("reads a version 1 file, where benchmark was a bare name", async () => {
-    await logRealisticDay();
-    const doc: any = await buildExportDoc(db);
-    doc.version = 1;
-    for (const s of doc.sessions) {
-      for (const b of s.blocks) if (b.benchmark) b.benchmark = b.benchmark.name;
-    }
-
-    const parsed = parseBackup(JSON.stringify(doc));
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    await importBackup(db, parsed.doc);
-
-    const fran = await idOf("fran");
-    const [wod] = await db.select().from(blocks).where(eq(blocks.benchmarkId, fran));
-    expect(wod).toBeTruthy();
   });
 
   it("reports what is about to be replaced", async () => {

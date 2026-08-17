@@ -172,7 +172,8 @@ writing anything, because failing partway leaves a log that is neither the old
 one nor the new one. Benchmarks are looked up, never created; unknown movements
 are created and flagged `isCustom`.
 
-Export is at version 3; import reads 1 and 2 as well.
+Export is at version 3. Import accepts that version only — no backup written by
+an earlier build exists.
 
 ---
 

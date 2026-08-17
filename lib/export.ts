@@ -5,15 +5,9 @@ import { blockMovements, blocks, movements, sessions } from "../db/schema";
 type DB = BaseSQLiteDatabase<any, any, any>;
 
 /**
- * 1 — original.
- * 2 — `benchmark` became { slug, name }. The slug is the stable machine key; a
- *     restore that silently failed to re-tag Fran would be worse than one that
- *     refused to run.
- * 3 — blocks carry `shape`; the fields for features the app never grew — notes,
- *     time caps, per-set durations and notes, the warm-up flag — are gone.
- *
- * Import reads all three: the removed fields are ignored where they appear, and
- * `shape` is simply absent from older files.
+ * Bumped whenever the document shape changes. Import accepts this version only —
+ * no backup written by an earlier build exists, so there is nothing to stay
+ * compatible with.
  */
 export const EXPORT_VERSION = 3;
 
@@ -34,7 +28,7 @@ export type ExportDoc = {
   version: number;
   exportedAt: string;
   counts: { sessions: number; blocks: number; sets: number; customMovements: number };
-  /** Only the user's own additions — the 156 seeded rows ship with the app. */
+  /** Only the user's own additions; the seeded movements ship with the app. */
   customMovements: {
     slug: string;
     name: string;
@@ -60,9 +54,8 @@ export type ExportBlock = {
   rawText: string;
   format: string;
   /**
-   * The structured echo of the header line, so a restore redisplays the log
-   * form's dials. Null throughout on strength blocks and on anything written
-   * before the dials existed; `rawText` says the same thing in words.
+   * The structured echo of the header line, so a restore redisplays the stages
+   * as they were answered. Null throughout on a strength block.
    */
   shape: {
     rounds: number | null;

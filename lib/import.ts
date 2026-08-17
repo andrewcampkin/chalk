@@ -3,7 +3,7 @@ import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { blockMovements, blocks, movements, prs, sessions } from "../db/schema";
 import { rebuildAllPrs } from "../db/queries";
 import { EXPORT_VERSION, type ExportDoc } from "./export";
-import { slugify, tidyName, uniqueSlug } from "./movements";
+import { tidyName, uniqueSlug } from "./movements";
 
 type DB = BaseSQLiteDatabase<any, any, any>;
 
@@ -51,14 +51,11 @@ export function parseBackup(text: string): ParseResult {
     return { ok: false, errors: ["This is not a Chalk backup."] };
   }
   const version = Number(raw.version);
-  if (!Number.isFinite(version) || version < 1) {
-    return { ok: false, errors: ["Missing or unreadable version."] };
-  }
-  if (version > EXPORT_VERSION) {
+  if (version !== EXPORT_VERSION) {
     return {
       ok: false,
       errors: [
-        `Made by a newer version of Chalk (file is v${version}, this build reads up to v${EXPORT_VERSION}).`,
+        `This build reads v${EXPORT_VERSION} backups and the file says v${raw.version ?? "?"}.`,
       ],
     };
   }
@@ -164,9 +161,7 @@ export async function importBackup(db: DB, doc: ExportDoc): Promise<ImportSummar
           benchmarkId: benchmarkIdFor(b.benchmark, slugToId.map),
           rawText: b.rawText,
           format: b.format as any,
-          // Absent in v1 and v2 files, and on anything hand-edited. The header
-          // line survives in rawText either way, so a missing shape costs the
-          // log form its pre-lit chips and nothing more.
+          // Absent on a hand-edited file; rawText still carries the header.
           rounds: b.shape?.rounds ?? null,
           durationMin: b.shape?.durationMin ?? null,
           everyMin: b.shape?.everyMin ?? null,
@@ -216,14 +211,11 @@ export async function importBackup(db: DB, doc: ExportDoc): Promise<ImportSummar
   };
 }
 
-/** v1 stored a bare display name; v2 stores { slug, name }. */
 function benchmarkIdFor(
-  ref: { slug: string; name: string } | string | null | undefined,
+  ref: { slug: string; name: string } | null | undefined,
   map: Map<string, number>,
 ): number | null {
-  if (!ref) return null;
-  if (typeof ref === "string") return map.get(slugify(ref)) ?? null;
-  return map.get(ref.slug) ?? null;
+  return ref ? (map.get(ref.slug) ?? null) : null;
 }
 
 /**
@@ -242,10 +234,7 @@ async function resolveSlugs(db: DB, doc: ExportDoc) {
     for (const b of s.blocks ?? []) {
       // A benchmark is looked up, never created. Inventing a "Fran" that is
       // not the real one would silently break every search that relies on it.
-      // v1 files carry a bare display name, so fall back to slugifying it.
-      const bench = b.benchmark as any;
-      if (typeof bench === "string") lookupOnly.add(slugify(bench));
-      else if (bench?.slug) lookupOnly.add(bench.slug);
+      if (b.benchmark?.slug) lookupOnly.add(b.benchmark.slug);
 
       for (const m of b.movements ?? []) wanted.set(m.slug, m.name ?? m.slug);
     }

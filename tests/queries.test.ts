@@ -53,7 +53,6 @@ async function logSet(
     setNumber: 1,
     loadG,
     reps,
-    isWarmup: opts.warmup ?? false,
     isFailed: opts.failed ?? false,
   });
   await recomputePrsForBlock(db, b.id);
@@ -83,10 +82,9 @@ describe("repMaxes", () => {
     expect(max.date).toBe("2026-01-10");
   });
 
-  it("excludes warm-ups and failed reps", async () => {
+  it("excludes a rep that was failed", async () => {
     const dl = await idOf("deadlift");
     await logSet("2026-02-01", dl, 140_000, 5);
-    await logSet("2026-02-08", dl, 200_000, 5, { warmup: true });
     await logSet("2026-02-15", dl, 210_000, 5, { failed: true });
 
     const [max] = await repMaxes(db, dl);

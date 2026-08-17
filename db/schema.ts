@@ -88,9 +88,8 @@ export const sessions = sqliteTable(
     /** ISO date, "YYYY-MM-DD". Local calendar day, not UTC — a 6am session must
      *  never drift to the previous day. */
     date: text("date").notNull(),
-    /** "Morning class", "Open gym". Optional. */
+    /** Tags the loadable sample history so removing it is exact. */
     label: text("label"),
-    notes: text("notes"),
     /* No session-level rating: "how it felt" belongs to a block, because within
      * one session the squats and the running rarely feel the same. */
     createdAt: integer("created_at", { mode: "timestamp_ms" })
@@ -194,16 +193,6 @@ export const blocks = sqliteTable(
      */
     feel: integer("feel"),
 
-    timeCapSec: integer("time_cap_sec"),
-    /**
-     * crossfit.com's "Compare to 260717" — a pointer at the last time the same
-     * thing was programmed. NOT YET USED: nothing writes or reads this, because
-     * movement search already answers "when did I last do this" well enough.
-     * Kept because the column is free and the feature is plausible; delete it
-     * if it is still unused when the next migration comes round.
-     */
-    compareToBlockId: integer("compare_to_block_id"),
-    notes: text("notes"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .default(sql`(unixepoch() * 1000)`),
@@ -258,16 +247,11 @@ export const blockMovements = sqliteTable(
     reps: integer("reps"),
     /** Metres, for runs, rows, and carries. */
     distanceM: integer("distance_m"),
-    /** Seconds, for holds and machine intervals. */
-    durationSec: integer("duration_sec"),
     /** Calories, for erg pieces. */
     calories: integer("calories"),
 
-    /** Set-level flags that keep bad data out of PRs. */
-    isWarmup: integer("is_warmup", { mode: "boolean" }).notNull().default(false),
+    /** Kept out of PR queries rather than deleted: a missed attempt is a fact. */
     isFailed: integer("is_failed", { mode: "boolean" }).notNull().default(false),
-    /** "Every rep touch and go", "belt on". */
-    note: text("note"),
   },
   (t) => [
     /** The index that makes "find every session with a snatch" instant. */

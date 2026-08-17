@@ -40,8 +40,8 @@ async function logRealisticDay() {
     })
     .returning();
   await db.insert(blockMovements).values([
-    { blockId: strength.id, movementId: pc, position: 0, setNumber: 1, loadG: 60_000, reps: 3, isWarmup: true },
-    { blockId: strength.id, movementId: pc, position: 0, setNumber: 2, loadG: 70_000, reps: 3 },
+    { blockId: strength.id, movementId: pc, position: 0, setNumber: 1, loadG: 70_000, reps: 3 },
+    { blockId: strength.id, movementId: pc, position: 0, setNumber: 2, loadG: 80_000, reps: 3, isFailed: true },
   ]);
 
   const [wod] = await db
@@ -179,15 +179,15 @@ describe("restoring", () => {
     expect(pr.value).toBe(70_000);
   });
 
-  it("keeps warm-up and failed flags, which PR queries depend on", async () => {
+  it("keeps the failed flag, which PR queries depend on", async () => {
     await logRealisticDay();
     const doc = await buildExportDoc(db);
     await importBackup(db, doc);
 
     const pc = await idOf("power-clean");
     const rows = await db.select().from(blockMovements).where(eq(blockMovements.movementId, pc));
-    expect(rows.filter((r: any) => r.isWarmup)).toHaveLength(1);
-    // The 60kg warm-up must not become the record.
+    expect(rows.filter((r: any) => r.isFailed)).toHaveLength(1);
+    // The failed 80kg attempt must not become the record.
     const [pr] = await db.select().from(prs).where(eq(prs.movementId, pc));
     expect(pr.value).toBe(70_000);
   });

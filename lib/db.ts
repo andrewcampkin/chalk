@@ -21,8 +21,8 @@ let ready: Promise<void> | null = null;
  * Migrations, then FTS, then seed — in that order, exactly once.
  *
  * The FTS5 virtual table and its triggers are hand-written and live outside
- * drizzle's journal, so they are applied here on every launch. Every statement
- * is `IF NOT EXISTS`, which makes re-running it free.
+ * drizzle's journal, so they are applied here on every launch. They are dropped
+ * and rebuilt each time — see db/sql/fts.sql for why.
  */
 export function initDb(): Promise<void> {
   ready ??= (async () => {

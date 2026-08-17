@@ -39,7 +39,6 @@ export async function draftFromBlock(
       reps: blockMovements.reps,
       distanceM: blockMovements.distanceM,
       calories: blockMovements.calories,
-      isWarmup: blockMovements.isWarmup,
       isFailed: blockMovements.isFailed,
     })
     .from(blockMovements)
@@ -72,7 +71,6 @@ export async function draftFromBlock(
       key: k,
       reps: r.reps,
       loadG: r.loadG,
-      isWarmup: !!r.isWarmup,
       isFailed: !!r.isFailed,
     };
   });
@@ -150,8 +148,7 @@ export async function draftFromBlock(
     strengthMovementName: setRows[0]?.name ?? null,
     sets: sets.length
       ? sets
-      : [{ key: key(), reps: null, loadG: null, isWarmup: false, isFailed: false }],
-    gridOpen: sets.length > 1,
+      : [{ key: key(), reps: null, loadG: null, isFailed: false }],
     movements: draftMovements,
     rounds: block.rounds,
     durationMin: block.durationMin,
@@ -162,7 +159,6 @@ export async function draftFromBlock(
     scoreReps: block.scoreReps,
     capped: !!block.capped,
     feel: block.feel,
-    notes: block.notes ?? "",
   };
 
   return { draft, buffers };

@@ -6,17 +6,16 @@ type DB = BaseSQLiteDatabase<any, any, any>;
 
 /**
  * 1 — original.
- * 2 — `benchmark` became { slug, name } instead of a bare display name. The
- *     slug is the stable machine key; a display name can be edited, and a
+ * 2 — `benchmark` became { slug, name }. The slug is the stable machine key; a
  *     restore that silently failed to re-tag Fran would be worse than one that
- *     refused to run. Import still accepts version 1.
+ *     refused to run.
+ * 3 — blocks carry `shape`; the fields for features the app never grew — notes,
+ *     time caps, per-set durations and notes, the warm-up flag — are gone.
  *
- * `shape` was added to blocks without a version bump, on purpose. It is purely
- * additive and everything in it is already stated in plain words by `rawText`,
- * so a reader that ignores it loses nothing — whereas bumping would make older
- * builds reject the whole file, which is a far worse trade for a nicety.
+ * Import reads all three: the removed fields are ignored where they appear, and
+ * `shape` is simply absent from older files.
  */
-export const EXPORT_VERSION = 2;
+export const EXPORT_VERSION = 3;
 
 /**
  * The backup format.
@@ -49,7 +48,6 @@ export type ExportDoc = {
 export type ExportSession = {
   date: string;
   label: string | null;
-  notes: string | null;
   blocks: ExportBlock[];
 };
 
@@ -79,8 +77,6 @@ export type ExportBlock = {
     capped: boolean;
   };
   feel: number | null;
-  timeCapSec: number | null;
-  notes: string | null;
   movements: {
     slug: string;
     name: string;
@@ -88,11 +84,8 @@ export type ExportBlock = {
     loadG: number | null;
     reps: number | null;
     distanceM: number | null;
-    durationSec: number | null;
     calories: number | null;
-    isWarmup: boolean;
     isFailed: boolean;
-    note: string | null;
   }[];
 };
 
@@ -113,11 +106,8 @@ export async function buildExportDoc(db: DB, now = new Date()): Promise<ExportDo
       loadG: blockMovements.loadG,
       reps: blockMovements.reps,
       distanceM: blockMovements.distanceM,
-      durationSec: blockMovements.durationSec,
       calories: blockMovements.calories,
-      isWarmup: blockMovements.isWarmup,
       isFailed: blockMovements.isFailed,
-      note: blockMovements.note,
     })
     .from(blockMovements)
     .innerJoin(movements, eq(movements.id, blockMovements.movementId))
@@ -145,7 +135,6 @@ export async function buildExportDoc(db: DB, now = new Date()): Promise<ExportDo
   const exported: ExportSession[] = sessionRows.map((s: any) => ({
     date: s.date,
     label: s.label,
-    notes: s.notes,
     blocks: (blocksBySession.get(s.id) ?? []).map(
       (b: any): ExportBlock => ({
         position: b.position,
@@ -163,8 +152,6 @@ export async function buildExportDoc(db: DB, now = new Date()): Promise<ExportDo
           capped: !!b.capped,
         },
         feel: b.feel,
-        timeCapSec: b.timeCapSec,
-        notes: b.notes,
         movements: (setsByBlock.get(b.id) ?? []).map((m: any) => ({
           slug: m.slug,
           name: m.name,
@@ -172,11 +159,8 @@ export async function buildExportDoc(db: DB, now = new Date()): Promise<ExportDo
           loadG: m.loadG,
           reps: m.reps,
           distanceM: m.distanceM,
-          durationSec: m.durationSec,
           calories: m.calories,
-          isWarmup: !!m.isWarmup,
           isFailed: !!m.isFailed,
-          note: m.note,
         })),
       }),
     ),

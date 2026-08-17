@@ -101,8 +101,6 @@ export default function SessionDetail() {
               </Pressable>
             ))}
           </View>
-
-          {b.notes ? <Text style={st.notes}>{b.notes}</Text> : null}
         </Pressable>
       ))}
 
@@ -183,5 +181,4 @@ const st = StyleSheet.create({
     paddingVertical: 5,
     overflow: "hidden",
   },
-  notes: { color: colors.textFaint, fontSize: t.label, marginTop: space.md, fontStyle: "italic" },
 });

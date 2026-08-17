@@ -108,7 +108,7 @@ export function parseBackup(text: string): ParseResult {
         if (typeof m?.slug !== "string" || !m.slug.trim()) {
           at(`${bp}.movements[${mi}]`, "missing slug");
         }
-        for (const field of ["loadG", "reps", "distanceM", "durationSec", "calories"]) {
+        for (const field of ["loadG", "reps", "distanceM", "calories"]) {
           if (m?.[field] != null && !Number.isInteger(m[field])) {
             at(`${bp}.movements[${mi}]`, `${field} must be a whole number`);
           }
@@ -150,7 +150,7 @@ export async function importBackup(db: DB, doc: ExportDoc): Promise<ImportSummar
   for (const s of doc.sessions) {
     const [session] = await db
       .insert(sessions)
-      .values({ date: s.date, label: s.label ?? null, notes: s.notes ?? null })
+      .values({ date: s.date, label: s.label ?? null })
       .returning();
 
     for (const [position, b] of (s.blocks ?? []).entries()) {
@@ -176,8 +176,6 @@ export async function importBackup(db: DB, doc: ExportDoc): Promise<ImportSummar
           scoreReps: b.score?.reps ?? null,
           capped: !!b.score?.capped,
           feel: b.feel ?? null,
-          timeCapSec: b.timeCapSec ?? null,
-          notes: b.notes ?? null,
         })
         .returning();
       blockCount++;
@@ -194,11 +192,8 @@ export async function importBackup(db: DB, doc: ExportDoc): Promise<ImportSummar
             loadG: m.loadG ?? null,
             reps: m.reps ?? null,
             distanceM: m.distanceM ?? null,
-            durationSec: m.durationSec ?? null,
             calories: m.calories ?? null,
-            isWarmup: !!m.isWarmup,
             isFailed: !!m.isFailed,
-            note: m.note ?? null,
           };
         })
         .filter(Boolean) as (typeof blockMovements.$inferInsert)[];

@@ -17,11 +17,23 @@ export type MovementShape = {
 
 export function inputsFor(m: MovementShape): InputKind[] {
   if (m.defaultScoreType === "distance") return ["distance", "calories"];
+  if (isBodyweight(m)) return ["reps"];
   return ["reps", "load"];
 }
 
 export function isDistanceMovement(m: MovementShape): boolean {
   return m.defaultScoreType === "distance";
+}
+
+/**
+ * Gymnastics is your own bodyweight, so it gets no kilos box. Keyed on modality
+ * where the distance question keys on score type: "is it measured in metres" is
+ * about how a movement is counted, "is there a barbell" about what it is. A
+ * pull-up and a double-under are both counted in reps, and only one ever has a
+ * plate on it. Weighted variants are revealed on request by the log form.
+ */
+export function isBodyweight(m: MovementShape): boolean {
+  return m.modality === "gymnastics";
 }
 
 /** Common CrossFit distances, so the usual case is one tap rather than typing. */

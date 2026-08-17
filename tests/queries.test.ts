@@ -7,7 +7,9 @@ import {
   rebuildAllPrs,
   recomputePrsForBlock,
   repMaxes,
+  resolveMovements,
   searchRawText,
+  topSetsOverTime,
   staleMovements,
 } from "../db/queries";
 import { blockMovements, blocks, movements, prs, sessions } from "../db/schema";
@@ -102,7 +104,7 @@ describe("repMaxes", () => {
   });
 });
 
-describe("PR cache (invariant 3: fully reconstructible)", () => {
+describe("PR cache is fully reconstructible", () => {
   it("ratchets down when a block is corrected", async () => {
     const sn = await idOf("snatch");
     const blockId = await logSet("2026-04-01", sn, 200_000, 1); // typo
@@ -191,6 +193,61 @@ describe("full-text search", () => {
   });
 });
 
+describe("rep maxes come from strength work", () => {
+  /**
+   * Twenty-one thrusters at 43kg in a Fran is prescribed volume, not an attempt
+   * at a 21-rep max. candidatesForBlock already refuses to make a record of it,
+   * so the movement screen must refuse too — otherwise it shows a rep max the
+   * records screen will not.
+   */
+  it("ignores a loaded WOD movement", async () => {
+    const thruster = await idOf("thruster");
+
+    const [s1] = await db.insert(sessions).values({ date: "2026-06-01" }).returning();
+    const [wod] = await db
+      .insert(blocks)
+      .values({
+        sessionId: s1.id, kind: "wod", format: "for_time", rounds: 3,
+        rawText: "21-15-9", scoreType: "time", scoreValue: 252,
+      })
+      .returning();
+    await db.insert(blockMovements).values(
+      [21, 15, 9].map((reps, i) => ({
+        blockId: wod.id, movementId: thruster, setNumber: i + 1, reps, loadG: 43_000,
+      })),
+    );
+
+    expect(await repMaxes(db, thruster)).toHaveLength(0);
+    expect(await topSetsOverTime(db, thruster)).toHaveLength(0);
+
+    const [s2] = await db.insert(sessions).values({ date: "2026-06-08" }).returning();
+    const [lift] = await db
+      .insert(blocks)
+      .values({ sessionId: s2.id, kind: "strength", format: "sets", rawText: "thrusters", scoreType: "load" })
+      .returning();
+    await db
+      .insert(blockMovements)
+      .values({ blockId: lift.id, movementId: thruster, setNumber: 1, reps: 3, loadG: 80_000 });
+
+    // The strength set still counts, and the metcon has not crept in beside it.
+    const maxes = await repMaxes(db, thruster);
+    expect(maxes.map((m: any) => [m.reps, m.loadG])).toEqual([[3, 80_000]]);
+    expect(await topSetsOverTime(db, thruster)).toHaveLength(1);
+  });
+
+  it("still finds the movement in both, which is a different question", async () => {
+    const thruster = await idOf("thruster");
+    const [s] = await db.insert(sessions).values({ date: "2026-06-01" }).returning();
+    const [wod] = await db
+      .insert(blocks)
+      .values({ sessionId: s.id, kind: "wod", format: "for_time", rawText: "21-15-9", scoreType: "time" })
+      .returning();
+    await db.insert(blockMovements).values({ blockId: wod.id, movementId: thruster, reps: 21 });
+
+    expect(await blocksForMovement(db, thruster)).toHaveLength(1);
+  });
+});
+
 describe("movement history (not just PRs)", () => {
   it("finds WOD appearances, not only loaded strength sets", async () => {
     const pullup = await idOf("pull-up");
@@ -211,6 +268,52 @@ describe("movement history (not just PRs)", () => {
     const rows = await blocksForMovement(db, pullup);
     expect(rows).toHaveLength(1);
     expect(rows[0].date).toBe("2026-07-04");
+  });
+
+  /**
+   * Job 2, and the reason block_movements exists at all. Searching a movement
+   * has to reach WODs and strength work alike — "when did I last clean" is not
+   * a question about barbells only, and "when did I last do pull-ups" would be
+   * unanswerable if WOD rows were skipped because they carry no load.
+   */
+  it("finds a movement in both a WOD and a strength session", async () => {
+    const clean = await idOf("clean");
+
+    const [s1] = await db.insert(sessions).values({ date: "2026-07-01" }).returning();
+    const [strength] = await db
+      .insert(blocks)
+      .values({
+        sessionId: s1.id, kind: "strength", format: "sets",
+        rawText: "Clean 3x2\n80 / 85 / 90 kg", scoreType: "none",
+      })
+      .returning();
+    await db.insert(blockMovements).values([
+      { blockId: strength.id, movementId: clean, setNumber: 1, loadG: 80_000, reps: 2 },
+      { blockId: strength.id, movementId: clean, setNumber: 2, loadG: 90_000, reps: 2 },
+    ]);
+
+    const [s2] = await db.insert(sessions).values({ date: "2026-07-09" }).returning();
+    const [wod] = await db
+      .insert(blocks)
+      .values({
+        sessionId: s2.id, kind: "wod", format: "amrap", durationMin: 12,
+        rawText: "12 min AMRAP:\n3 Clean\n6 Push-up", scoreType: "rounds_reps", scoreValue: 90,
+      })
+      .returning();
+    await db.insert(blockMovements).values({ blockId: wod.id, movementId: clean, reps: 3 });
+
+    // The search box resolves the word to a movement...
+    const matches = await resolveMovements(db, "clean");
+    expect(matches.map((m: any) => m.slug)).toContain("clean");
+
+    // ...and the movement reaches both kinds of block, newest first.
+    const rows = await blocksForMovement(db, clean);
+    expect(rows.map((r: any) => [r.date, r.kind])).toEqual([
+      ["2026-07-09", "wod"],
+      ["2026-07-01", "strength"],
+    ]);
+    // The strength block still reports the heaviest working set alongside it.
+    expect(rows[1].topLoadG).toBe(90_000);
   });
 });
 

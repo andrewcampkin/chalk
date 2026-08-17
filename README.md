@@ -28,12 +28,16 @@ recently-used movements are always one tap away.
 
 ## What v1 does
 
-- **Log a WOD or a strength piece.** Pick a format (for time, AMRAP, EMOM,
-  rounds, chipper), tap movements from your recent list, enter one score. The
-  verbatim workout text is *generated* from what you tapped, and stays editable.
+- **Log a WOD or a strength piece.** Setting up a WOD is staged: one question at
+  a time — for time, AMRAP or EMOM, then how many rounds or how long — answered
+  by swiping through the options and tapping the one under your thumb. Then
+  movements from your recent list, then one score. The verbatim workout text is
+  *generated* from what you tapped, and stays editable.
+- **A row per round.** Choosing three rounds lays out three, each pre-filled
+  from the one above, so a uniform workout is typed once and a 21-15-9 is typed
+  as 21, 15, 9.
 - **Structured entry that matches the movement.** Runs and ergs ask for metres
-  and calories; barbell and gymnastics work asks for reps and load. Strength
-  opens as a single top-set field and expands into a set grid on demand.
+  and calories, gymnastics for reps alone, everything else for reps and load.
 - **Backdate anything.** Today and Yesterday are one tap; older days open a
   calendar. Future days are refused.
 - **Rate how it felt**, 1 (wrecked) to 5 (flying), per block rather than per
@@ -45,8 +49,8 @@ recently-used movements are always one tap away.
   share sheet; restore reads one back, rebuilding records from the workouts
   rather than trusting the file.
 
-105 movements and 51 benchmark WODs ship preloaded, so nothing needs typing on
-day one. Logging "Fran" also tags thruster and pull-up, which is what makes
+The movement vocabulary and the benchmark WODs ship preloaded, so nothing needs
+typing on day one. Logging "Fran" also tags thruster and pull-up, which is what makes
 searching "thruster" find every Fran you have ever done.
 
 ## Running it
@@ -136,19 +140,14 @@ Five tables: `movements`, `sessions`, `blocks`, `block_movements`, `prs`.
 The design rests on two ideas. `blocks.raw_text` holds the workout verbatim, so
 a block the parser understood nothing about is still a complete, findable
 record. And `block_movements` is both the search index and the set log — one
-row per set, which is what lets a rep max fall out of a `MAX()` and is why
-there is no sixth table.
+row per set and one per round, which is what lets a rep max fall out of a
+`MAX()` and is why there is no sixth table.
 
 - **[SPEC.md](SPEC.md)** — the product reasoning and screen-by-screen detail.
-- **[CLAUDE.md](CLAUDE.md)** — the operating manual: what is decided, what must
-  not be broken, and what to build next. Read the invariants before changing
-  the data model.
+- **[CLAUDE.md](CLAUDE.md)** — the operating manual: what is decided and what
+  must not be broken. Read the invariants before changing the data model.
 
 ## Status
 
 v1, and in use. Not published anywhere and not intended to be — it is a
 single-user app with a single user.
-
-Backup and restore both work: export writes a self-describing JSON file, and
-restore reads one back, rebuilding records from the workouts rather than
-trusting the file.

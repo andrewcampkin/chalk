@@ -56,6 +56,7 @@ async function logDay() {
       benchmarkId: fran,
       rawText: '"Fran"\n21-15-9 for time:\nThruster (43 kg)\nPull-up',
       format: "for_time",
+      rounds: 3,
       scoreType: "time",
       scoreValue: 252,
       feel: 5,
@@ -93,7 +94,7 @@ describe("export", () => {
     expect(doc.sessions[0].blocks[0].movements).toHaveLength(2);
   });
 
-  it("keeps the verbatim text intact — invariant 1", async () => {
+  it("keeps the verbatim text intact", async () => {
     await logDay();
     const doc = await buildExportDoc(db);
     expect(doc.sessions[0].blocks[0].rawText).toBe("Power clean 2x3, building\n60 / 70 kg");

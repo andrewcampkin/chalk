@@ -76,7 +76,9 @@ export default function SessionDetail() {
             </View>
           </View>
           <Text style={st.title}>{b.title}</Text>
-          <Text style={st.raw}>{b.rawText}</Text>
+          {bodyOf(b.title, b.rawText) ? (
+            <Text style={st.raw}>{bodyOf(b.title, b.rawText)}</Text>
+          ) : null}
 
           {b.scoreValue != null && (
             <Text style={st.score}>
@@ -88,30 +90,16 @@ export default function SessionDetail() {
             </Text>
           )}
 
-          {b.movements.filter((m) => m.setNumber != null).length > 0 && (
-            <View style={st.sets}>
-              {b.movements
-                .filter((m) => m.setNumber != null)
-                .map((m, i) => (
-                  <View key={i} style={st.setRow}>
-                    <Text style={st.setNo}>{m.setNumber}</Text>
-                    <Text style={st.setReps}>{m.reps ?? "—"}</Text>
-                    <Text style={st.setLoad}>{formatScore("load", m.loadG, { unit })}</Text>
-                    {m.isWarmup && <Text style={st.flag}>warm-up</Text>}
-                    {m.isFailed && <Text style={st.flag}>failed</Text>}
-                  </View>
-                ))}
-            </View>
-          )}
-
+          {/* The workout text above already lists every set and round. A table
+              repeating them said the same thing twice for a strength block and,
+              once a WOD round became its own row, said it wrongly — six
+              unlabelled rows with no way to tell a pull-up from a thruster. */}
           <View style={st.tags}>
-            {b.movements
-              .filter((m) => m.setNumber == null)
-              .map((m) => (
-                <Pressable key={m.movementId} onPress={() => router.push(`/movement/${m.movementId}`)}>
-                  <Text style={st.tag}>{m.name}</Text>
-                </Pressable>
-              ))}
+            {distinctMovements(b.movements).map((m) => (
+              <Pressable key={m.movementId} onPress={() => router.push(`/movement/${m.movementId}`)}>
+                <Text style={st.tag}>{m.name}</Text>
+              </Pressable>
+            ))}
           </View>
 
           {b.notes ? <Text style={st.notes}>{b.notes}</Text> : null}
@@ -130,6 +118,30 @@ export default function SessionDetail() {
       <Button label="Delete session" variant="danger" onPress={confirmDelete} style={{ marginTop: space.md }} />
     </ScrollView>
   );
+}
+
+/**
+ * The verbatim text, minus a first line the title already says.
+ *
+ * generateTitle() and generateRawText() both open a strength block with "Front
+ * Squat 5x5", so the card was printing it twice. Trimmed here rather than in
+ * the generator: raw_text stays whole, and this is a decision
+ * about one card rather than about the record.
+ */
+function bodyOf(title: string | null, rawText: string): string {
+  const lines = rawText.split("\n");
+  if (title && lines[0]?.trim() === title.trim()) lines.shift();
+  return lines.join("\n").trim();
+}
+
+/**
+ * One tag per movement, however many sets or rounds it appears in. These are
+ * the way into "when did I last do pull-ups", so a Fran needs to offer Thruster
+ * and Pull-up once each, not three times apiece.
+ */
+function distinctMovements<T extends { movementId: number; name: string }>(rows: T[]): T[] {
+  const seen = new Set<number>();
+  return rows.filter((m) => !seen.has(m.movementId) && seen.add(m.movementId));
 }
 
 const st = StyleSheet.create({
@@ -160,12 +172,6 @@ const st = StyleSheet.create({
     fontVariant: ["tabular-nums"],
     marginTop: space.md,
   },
-  sets: { marginTop: space.md, gap: 2 },
-  setRow: { flexDirection: "row", alignItems: "center", gap: space.md },
-  setNo: { width: 16, color: colors.textFaint, fontSize: t.label },
-  setReps: { width: 28, color: colors.textDim, fontSize: t.body, fontVariant: ["tabular-nums"] },
-  setLoad: { color: colors.text, fontSize: t.body, fontWeight: "600", fontVariant: ["tabular-nums"] },
-  flag: { color: colors.textFaint, fontSize: t.tiny },
   tags: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginTop: space.md },
   tag: {
     color: colors.textDim,

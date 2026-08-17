@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { db } from "./db";
 import { blockMovements, blocks, movements, sessions } from "../db/schema";
-import type { Draft, DraftMovement, DraftSet } from "./draft";
+import { emptyRound, type Draft, type DraftMovement, type DraftSet } from "./draft";
 import { gramsToBuffer, secondsToBuffer } from "./entry";
 import { isDistanceMovement } from "./inputs";
 import type { Unit } from "../db/score";
@@ -11,7 +11,7 @@ import type { Unit } from "../db/score";
  * so every field redisplays the value that is actually stored.
  *
  * `rawTextDirty` is set true on purpose. The verbatim text is the source of
- * truth (invariant 1) and must survive an edit untouched unless the user
+ * truth and must survive an edit untouched unless the user
  * deliberately rewrites it — regenerating it from the structured fields could
  * quietly discard something typed by hand months ago.
  */
@@ -47,16 +47,22 @@ export async function draftFromBlock(
     .where(eq(blockMovements.blockId, blockId))
     .orderBy(asc(blockMovements.position), asc(blockMovements.setNumber));
 
-  const benchmarkName = block.benchmarkId
-    ? ((await db.select({ name: movements.name }).from(movements).where(eq(movements.id, block.benchmarkId)))[0]?.name ?? null)
-    : null;
+  const [benchmark] = block.benchmarkId
+    ? await db
+        .select({ name: movements.name, prescription: movements.prescription })
+        .from(movements)
+        .where(eq(movements.id, block.benchmarkId))
+    : [];
 
   const buffers: Record<string, string> = {};
   let n = 0;
   const key = () => `e${++n}`;
 
-  const setRows = rows.filter((r: { setNumber: number | null }) => r.setNumber != null);
-  const movementRows = rows.filter((r: { setNumber: number | null }) => r.setNumber == null);
+  // Split on the block's kind, not on setNumber. A WOD now uses setNumber for
+  // the round a movement belongs to, so "has a set number" no longer means
+  // "is a strength set".
+  const setRows = block.kind === "strength" ? rows : [];
+  const movementRows = block.kind === "wod" ? rows : [];
 
   const sets: DraftSet[] = setRows.map((r: any) => {
     const k = key();
@@ -71,28 +77,53 @@ export async function draftFromBlock(
     };
   });
 
-  const draftMovements: DraftMovement[] = movementRows.map((r: any) => {
-    const k = key();
-    const shape = { modality: r.modality, defaultScoreType: r.defaultScoreType };
-    if (isDistanceMovement(shape)) {
-      buffers[`mov:${k}:distance`] = r.distanceM != null ? String(r.distanceM) : "";
-      buffers[`mov:${k}:calories`] = r.calories != null ? String(r.calories) : "";
-    } else {
-      buffers[`mov:${k}:reps`] = r.reps != null ? String(r.reps) : "";
-      buffers[`mov:${k}:load`] = gramsToBuffer(r.loadG, unit);
+  // Rows come back one per movement per round; fold them into a movement with
+  // its rounds in order. Ordered by position then setNumber above, so pushing
+  // in encounter order is already right.
+  const byMovement = new Map<number, DraftMovement>();
+  for (const r of movementRows as any[]) {
+    let m = byMovement.get(r.movementId);
+    if (!m) {
+      m = {
+        key: key(),
+        movementId: r.movementId,
+        name: r.name,
+        modality: r.modality,
+        defaultScoreType: r.defaultScoreType,
+        rounds: [],
+      };
+      byMovement.set(r.movementId, m);
     }
-    return {
-      key: k,
-      movementId: r.movementId,
-      name: r.name,
-      modality: r.modality,
-      defaultScoreType: r.defaultScoreType,
+    m.rounds.push({
       reps: r.reps,
       loadG: r.loadG,
       distanceM: r.distanceM,
       calories: r.calories,
-    };
-  });
+    });
+  }
+
+  const draftMovements: DraftMovement[] = [...byMovement.values()];
+  for (const m of draftMovements) {
+    // A movement tagged by a benchmark carries no numbers at all and would
+    // otherwise come back with no rounds to show.
+    if (!m.rounds.length) m.rounds.push(emptyRound());
+    const distance = isDistanceMovement(m);
+    m.rounds.forEach((r, i) => {
+      const base = `mov:${m.key}:${i}`;
+      if (distance) {
+        buffers[`${base}:distance`] = r.distanceM != null ? String(r.distanceM) : "";
+        buffers[`${base}:calories`] = r.calories != null ? String(r.calories) : "";
+      } else {
+        buffers[`${base}:reps`] = r.reps != null ? String(r.reps) : "";
+        buffers[`${base}:load`] = gramsToBuffer(r.loadG, unit);
+      }
+    });
+  }
+
+  const numBuf = (n: number | null) => (n != null ? String(n) : "");
+  buffers["shape:rounds"] = numBuf(block.rounds);
+  buffers["shape:duration"] = numBuf(block.durationMin);
+  buffers["shape:every"] = numBuf(block.everyMin);
 
   if (block.scoreType === "rounds_reps") {
     buffers.rounds = block.scoreRounds != null ? String(block.scoreRounds) : "";
@@ -113,7 +144,8 @@ export async function draftFromBlock(
     rawText: block.rawText,
     rawTextDirty: true,
     benchmarkId: block.benchmarkId,
-    benchmarkName,
+    benchmarkName: benchmark?.name ?? null,
+    benchmarkPrescription: benchmark?.prescription ?? null,
     strengthMovementId: setRows[0]?.movementId ?? null,
     strengthMovementName: setRows[0]?.name ?? null,
     sets: sets.length
@@ -121,9 +153,9 @@ export async function draftFromBlock(
       : [{ key: key(), reps: null, loadG: null, isWarmup: false, isFailed: false }],
     gridOpen: sets.length > 1,
     movements: draftMovements,
-    repScheme: "",
-    rounds: null,
-    durationMin: null,
+    rounds: block.rounds,
+    durationMin: block.durationMin,
+    everyMin: block.everyMin,
     scoreType: block.scoreType,
     scoreValue: block.scoreValue,
     scoreRounds: block.scoreRounds,

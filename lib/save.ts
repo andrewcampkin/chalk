@@ -50,9 +50,10 @@ export async function saveDraft(
       kind: draft.kind,
       title: generateTitle(draft),
       benchmarkId: draft.benchmarkId,
-      // Invariant 1: never store an empty verbatim record.
+      // Never store an empty verbatim record.
       rawText: rawText.trim() || generateTitle(draft),
       format: draft.format,
+      ...shapeColumns(draft),
       scoreType: draft.scoreType,
       scoreValue: draft.scoreValue,
       scoreRounds: draft.scoreRounds,
@@ -99,7 +100,7 @@ export async function saveDraft(
  * leaving an orphan behind.
  *
  * PRs are always fully rebuilt. An edit can lower a value that currently holds
- * a record, and no incremental comparison can detect that (invariant 3): the
+ * a record, and no incremental comparison can detect that: the
  * cache has to be reconstructed from what the blocks now say. Moving the block
  * to a different date needs the same treatment, since record chronology
  * depends on the order.
@@ -120,6 +121,7 @@ async function updateBlock(draft: Draft, unit: Unit, blockId: number) {
       benchmarkId: draft.benchmarkId,
       rawText: rawText.trim() || generateTitle(draft),
       format: draft.format,
+      ...shapeColumns(draft),
       scoreType: draft.scoreType,
       scoreValue: draft.scoreValue,
       scoreRounds: draft.scoreRounds,
@@ -151,6 +153,24 @@ async function updateBlock(draft: Draft, unit: Unit, blockId: number) {
     .where(eq(prs.blockId, blockId));
 
   return { sessionId, blockId, newPrs: newPrs as SavedPr[] };
+}
+
+/**
+ * The structured echo of the header line — "5 rounds", "20 min", "E2MOM".
+ * Written so that reopening a block redisplays the stages as they were
+ * answered; `raw_text` reads well but cannot be parsed back reliably.
+ *
+ * Only a WOD has a shape. A strength block's structure is its set rows.
+ */
+function shapeColumns(draft: Draft) {
+  if (draft.kind !== "wod") {
+    return { rounds: null, durationMin: null, everyMin: null };
+  }
+  return {
+    rounds: draft.rounds,
+    durationMin: draft.durationMin,
+    everyMin: draft.everyMin,
+  };
 }
 
 async function deleteSessionIfEmpty(sessionId: number) {
@@ -208,16 +228,24 @@ async function writeMovementRows(blockId: number, draft: Draft) {
     }
   }
 
+  // One row per movement per round, the same rule strength sets follow. Fran is six
+  // rows, not two, which is what lets 21-15-9 be recorded as the three different
+  // rounds it actually is instead of being flattened to "21 and something".
+  // setNumber is the round; it stays null when there is only one, so a chipper
+  // and an AMRAP look exactly as they always did.
   draft.movements.forEach((m, i) => {
-    rows.push({
-      blockId,
-      movementId: m.movementId,
-      position: i,
-      setNumber: null,
-      loadG: m.loadG,
-      reps: m.reps,
-      distanceM: m.distanceM,
-      calories: m.calories,
+    const many = m.rounds.length > 1;
+    m.rounds.forEach((r, round) => {
+      rows.push({
+        blockId,
+        movementId: m.movementId,
+        position: i,
+        setNumber: many ? round + 1 : null,
+        loadG: r.loadG,
+        reps: r.reps,
+        distanceM: r.distanceM,
+        calories: r.calories,
+      });
     });
   });
 

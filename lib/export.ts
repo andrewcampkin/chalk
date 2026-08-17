@@ -10,6 +10,11 @@ type DB = BaseSQLiteDatabase<any, any, any>;
  *     slug is the stable machine key; a display name can be edited, and a
  *     restore that silently failed to re-tag Fran would be worse than one that
  *     refused to run. Import still accepts version 1.
+ *
+ * `shape` was added to blocks without a version bump, on purpose. It is purely
+ * additive and everything in it is already stated in plain words by `rawText`,
+ * so a reader that ignores it loses nothing — whereas bumping would make older
+ * builds reject the whole file, which is a far worse trade for a nicety.
  */
 export const EXPORT_VERSION = 2;
 
@@ -21,7 +26,7 @@ export const EXPORT_VERSION = 2;
  * movement reference therefore carries its slug and display name rather than a
  * bare foreign key.
  *
- * `prs` is deliberately absent. It is a cache (invariant 3) and rebuilding it
+ * `prs` is deliberately absent. It is a cache and rebuilding it
  * from these rows is the point — exporting it would create a second source of
  * truth that could disagree with the blocks it came from.
  */
@@ -53,9 +58,19 @@ export type ExportBlock = {
   kind: "strength" | "wod";
   title: string | null;
   benchmark: { slug: string; name: string } | null;
-  /** Invariant 1: the verbatim record. The one field that must never be lost. */
+  /** The verbatim record. The one field that must never be lost. */
   rawText: string;
   format: string;
+  /**
+   * The structured echo of the header line, so a restore redisplays the log
+   * form's dials. Null throughout on strength blocks and on anything written
+   * before the dials existed; `rawText` says the same thing in words.
+   */
+  shape: {
+    rounds: number | null;
+    durationMin: number | null;
+    everyMin: number | null;
+  };
   score: {
     type: string;
     value: number | null;
@@ -139,6 +154,7 @@ export async function buildExportDoc(db: DB, now = new Date()): Promise<ExportDo
         benchmark: b.benchmarkId != null ? (refById.get(b.benchmarkId) ?? null) : null,
         rawText: b.rawText,
         format: b.format,
+        shape: { rounds: b.rounds, durationMin: b.durationMin, everyMin: b.everyMin },
         score: {
           type: b.scoreType,
           value: b.scoreValue,

@@ -48,7 +48,7 @@ async function logRealisticDay() {
     .insert(blocks)
     .values({
       sessionId: s.id, position: 1, kind: "wod", title: "Fran", benchmarkId: fran,
-      rawText: '"Fran"\n21-15-9 thruster, pull-up', format: "for_time",
+      rawText: '"Fran"\n21-15-9 thruster, pull-up', format: "for_time", rounds: 3,
       scoreType: "time", scoreValue: 252, feel: 5, notes: "unbroken",
     })
     .returning();
@@ -82,7 +82,7 @@ describe("validating a backup", () => {
     if (!res.ok) expect(res.errors[0]).toContain("newer version");
   });
 
-  it("refuses a block with no workout text — invariant 1", () => {
+  it("refuses a block with no workout text", () => {
     const res = parseBackup(
       JSON.stringify({
         app: "chalk", version: EXPORT_VERSION,
@@ -93,7 +93,7 @@ describe("validating a backup", () => {
     if (!res.ok) expect(res.errors.join()).toContain("workout text");
   });
 
-  it("refuses a non-integer score — invariant 2", () => {
+  it("refuses a non-integer score", () => {
     const res = parseBackup(
       JSON.stringify({
         app: "chalk", version: EXPORT_VERSION,
@@ -163,7 +163,7 @@ describe("restoring", () => {
     expect(twice.counts).toEqual(once.counts);
   });
 
-  it("rebuilds records instead of trusting the file — invariant 3", async () => {
+  it("rebuilds records instead of trusting the file", async () => {
     await logRealisticDay();
     const doc: any = await buildExportDoc(db);
     // A backup that has been tampered with, or written by an older build.
@@ -190,6 +190,72 @@ describe("restoring", () => {
     // The 60kg warm-up must not become the record.
     const [pr] = await db.select().from(prs).where(eq(prs.movementId, pc));
     expect(pr.value).toBe(70_000);
+  });
+
+  it("restores a ladder round by round", async () => {
+    const thruster = await idOf("thruster");
+    const [s] = await db.insert(sessions).values({ date: "2026-08-08" }).returning();
+    const [b] = await db
+      .insert(blocks)
+      .values({
+        sessionId: s.id, kind: "wod", format: "for_time", rounds: 3,
+        rawText: "21-15-9 reps for time:\nThruster (43 kg)", scoreType: "time", scoreValue: 252,
+      })
+      .returning();
+    // One row per movement per round, as a strength set would be.
+    await db.insert(blockMovements).values(
+      [21, 15, 9].map((reps, i) => ({
+        blockId: b.id, movementId: thruster, position: 0, setNumber: i + 1, reps, loadG: 43_000,
+      })),
+    );
+
+    const doc = await buildExportDoc(db);
+    await importBackup(db, doc);
+
+    const rows = await db
+      .select()
+      .from(blockMovements)
+      .where(eq(blockMovements.movementId, thruster))
+      .orderBy(blockMovements.setNumber);
+    expect(rows.map((r: any) => [r.setNumber, r.reps])).toEqual([[1, 21], [2, 15], [3, 9]]);
+  });
+
+  it("restores the workout's shape, so the log form redisplays its dials", async () => {
+    const [s] = await db.insert(sessions).values({ date: "2026-08-07" }).returning();
+    await db.insert(blocks).values({
+      sessionId: s.id, kind: "wod", rawText: "Every 3 min for 15 min:", format: "emom",
+      durationMin: 15, everyMin: 3, scoreType: "reps",
+    });
+
+    const doc = await buildExportDoc(db);
+    await importBackup(db, doc);
+
+    const [restored] = await db.select().from(blocks).where(eq(blocks.format, "emom"));
+    expect([restored.durationMin, restored.everyMin]).toEqual([15, 3]);
+  });
+
+  it("reads a file written before the shape existed", async () => {
+    await logRealisticDay();
+    const doc: any = await buildExportDoc(db);
+    for (const s of doc.sessions) for (const b of s.blocks) delete b.shape;
+
+    const parsed = parseBackup(JSON.stringify(doc));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+
+    await importBackup(db, parsed.doc);
+    // The header line still says 21-15-9 in words; only the stage's answer is
+    // lost, and the verbatim text is the source of truth anyway.
+    const [wod] = await db.select().from(blocks).where(eq(blocks.title, "Fran"));
+    expect(wod.rounds).toBeNull();
+    expect(wod.rawText).toContain("21-15-9");
+  });
+
+  it("rejects a shape that is not a whole count", async () => {
+    await logRealisticDay();
+    const doc: any = await buildExportDoc(db);
+    doc.sessions[0].blocks[1].shape = { rounds: 2.5, durationMin: null, everyMin: null, repScheme: null };
+    expect(parseBackup(JSON.stringify(doc))).toMatchObject({ ok: false });
   });
 
   it("re-tags the benchmark so search still finds it", async () => {

@@ -1,5 +1,5 @@
 /**
- * Invariant 7: a session date is a LOCAL calendar day, "YYYY-MM-DD".
+ * A session date is a LOCAL calendar day, "YYYY-MM-DD".
  *
  * Every helper here builds and reads dates in local time. Nothing may go via
  * `new Date(iso)` or `toISOString()`, both of which interpret a bare date as

@@ -15,6 +15,13 @@
       "when": 1785989286568,
       "tag": "0001_flippant_black_bolt",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786934173612,
+      "tag": "0002_lyrical_la_nuit",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { formatDistance, formatScore } from "../db/score";
 import { MOVEMENTS } from "../db/seed";
-import { inputsFor, isDistanceMovement, presetLabel } from "../lib/inputs";
+import { inputsFor, isBodyweight, isDistanceMovement, presetLabel } from "../lib/inputs";
 
 const bySlug = (slug: string) => {
   const m = MOVEMENTS.find((x) => x.slug === slug);
@@ -26,10 +26,29 @@ describe("which fields a movement offers", () => {
     }
   });
 
-  it("keeps barbell and gymnastics work on reps and load", () => {
-    for (const slug of ["back-squat", "thruster", "pull-up", "burpee"]) {
+  it("keeps barbell work on reps and load", () => {
+    for (const slug of ["back-squat", "thruster", "clean", "snatch"]) {
       expect(inputsFor(bySlug(slug))).toEqual(["reps", "load"]);
+      expect(isBodyweight(bySlug(slug))).toBe(false);
     }
+  });
+
+  it("offers gymnastics no kilos box — it is your own bodyweight", () => {
+    // Every pull-up in every WOD was carrying an empty kg field. Weighted
+    // variants exist, so the log form can still reveal one on request; it is
+    // just not sitting on the common path.
+    for (const slug of ["pull-up", "burpee", "push-up", "air-squat", "toes-to-bar"]) {
+      expect(bySlug(slug).modality).toBe("gymnastics");
+      expect(isBodyweight(bySlug(slug))).toBe(true);
+      expect(inputsFor(bySlug(slug))).toEqual(["reps"]);
+    }
+  });
+
+  it("does not confuse a skipping rope for bodyweight work", () => {
+    // Monostructural, counted in reps, and there is no such thing as a
+    // weighted double-under — but the distinction that matters here is that it
+    // is not gymnastics, so the rule stays keyed on modality.
+    expect(isBodyweight(bySlug("double-under"))).toBe(false);
   });
 });
 

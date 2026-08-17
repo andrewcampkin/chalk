@@ -17,7 +17,7 @@ import { DateField } from "../components/DateField";
 import { FeelPicker } from "../components/Feel";
 import { MovementPicker } from "../components/MovementPicker";
 import { describeIso, todayIso } from "../lib/dates";
-import { DISTANCE_PRESETS, isDistanceMovement, presetLabel } from "../lib/inputs";
+import { DISTANCE_PRESETS, isBodyweight, isDistanceMovement, presetLabel } from "../lib/inputs";
 import { PrToast } from "../components/PrToast";
 import type { BlockFormat } from "../db/schema";
 import { StageCarousel, StageTrail } from "../components/Stage";
@@ -201,6 +201,13 @@ export default function LogScreen() {
    * above the form reopens any of them.
    */
   const [stage, setStage] = useState<Stage | null>(edit ? null : "kind");
+  /** The active field's value is selected, and the next digit replaces it. */
+  const [armed, setArmed] = useState(false);
+  /**
+   * Bodyweight movements the user has asked for a load on. Weighted pull-ups
+   * are real, but rare enough that the box does not belong on every row.
+   */
+  const [weighted, setWeighted] = useState<Set<string>>(new Set());
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -240,11 +247,11 @@ export default function LogScreen() {
       for (let r = 0; r < rounds; r++) {
         for (const m of draft.movements) {
           const base = `mov:${m.key}:${r}`;
-          ids.push(
-            ...(isDistanceMovement(m)
-              ? [`${base}:distance`, `${base}:calories`]
-              : [`${base}:reps`, `${base}:load`]),
-          );
+          if (isDistanceMovement(m)) ids.push(`${base}:distance`, `${base}:calories`);
+          else if (showsLoad(m)) ids.push(`${base}:reps`, `${base}:load`);
+          // A pull-up has nothing to weigh, so Next does not stop on a box
+          // that is not on the screen.
+          else ids.push(`${base}:reps`);
         }
       }
     } else {
@@ -261,12 +268,35 @@ export default function LogScreen() {
   const activeIndex = active ? fieldOrder.indexOf(active) : -1;
   const isLastField = activeIndex >= 0 && activeIndex === fieldOrder.length - 1;
 
-  const goToNextField = () => {
-    if (activeIndex < 0 || isLastField) {
-      setActive(null);
+  /**
+   * Moves to a field and arms it if it already holds a number: the value shows
+   * as selected and the next digit replaces it outright.
+   *
+   * Typing into a box that reads 21 almost always means "make it 15", not
+   * "make it 215". Appending is a text-box habit, and here it produces numbers
+   * that are wrong by an order of magnitude. Tapping the armed field again
+   * disarms it, so correcting a digit is still possible without retyping.
+   */
+  const focusField = (id: string) => {
+    if (id === active) {
+      setArmed(false);
       return;
     }
-    setActive(fieldOrder[activeIndex + 1]);
+    setActive(id);
+    setArmed((buf[id] ?? "") !== "");
+  };
+
+  const closePad = () => {
+    setActive(null);
+    setArmed(false);
+  };
+
+  const goToNextField = () => {
+    if (activeIndex < 0 || isLastField) {
+      closePad();
+      return;
+    }
+    focusField(fieldOrder[activeIndex + 1]);
   };
 
   /**
@@ -380,6 +410,16 @@ export default function LogScreen() {
 
   /* ---- the staged setup --------------------------------------------------- */
 
+  /**
+   * Whether this movement gets a kilos box. Gymnastics does not by default, but
+   * a load already entered — or asked for with ＋kg — brings it back, so a
+   * weighted pull-up is still loggable and reopens showing what was saved.
+   */
+  function showsLoad(m: (typeof draft.movements)[number]): boolean {
+    if (!isBodyweight(m)) return true;
+    return weighted.has(m.key) || m.rounds.some((r) => r.loadG != null);
+  }
+
   const stages = useMemo(() => stagesFor(draft.kind, draft.format), [draft.kind, draft.format]);
   const stageIndex = stage ? stages.indexOf(stage) : stages.length;
   const staging = stage != null;
@@ -422,9 +462,26 @@ export default function LogScreen() {
 
   const trail = stages.slice(0, stageIndex).map((s) => ({ key: s, label: trailLabel(draft, s) }));
 
-  const onDigit = (d: string) => active && commit(active, appendDigit(buf[active] ?? "", d, fieldKind(active)));
-  const onDot = () => active && commit(active, appendDot(buf[active] ?? ""));
-  const onBack = () => active && commit(active, backspace(buf[active] ?? ""));
+  /** An armed field is replaced wholesale by whatever is typed next. */
+  const typedInto = () => {
+    const base = armed ? "" : (buf[active!] ?? "");
+    setArmed(false);
+    return base;
+  };
+
+  const onDigit = (d: string) =>
+    active && commit(active, appendDigit(typedInto(), d, fieldKind(active)));
+  const onDot = () => active && commit(active, appendDot(typedInto()));
+  const onBack = () => {
+    if (!active) return;
+    // Backspace on a selection clears the lot, the way it would anywhere else.
+    if (armed) {
+      setArmed(false);
+      commit(active, "");
+      return;
+    }
+    commit(active, backspace(buf[active] ?? ""));
+  };
 
   /** Selecting a benchmark auto-tags its components — this is what makes search work. */
   const pickMovement = async (m: { id: number; name: string; kind: string }) => {
@@ -525,7 +582,7 @@ export default function LogScreen() {
                 <Button
                   label="Type a number"
                   variant="ghost"
-                  onPress={() => setActive(NUMERIC[stage].field)}
+                  onPress={() => focusField(NUMERIC[stage].field)}
                 />
               </View>
             )}
@@ -579,7 +636,7 @@ export default function LogScreen() {
                               label="m"
                               value={displayBuffer(buf[`${base}:distance`] ?? "", "int")}
                               active={active === `${base}:distance`}
-                              onPress={setActive}
+                              onPress={focusField}
                               wide
                             />
                             <Slot
@@ -587,7 +644,7 @@ export default function LogScreen() {
                               label="cal"
                               value={displayBuffer(buf[`${base}:calories`] ?? "", "int")}
                               active={active === `${base}:calories`}
-                              onPress={setActive}
+                              onPress={focusField}
                             />
                           </>
                         ) : (
@@ -597,15 +654,35 @@ export default function LogScreen() {
                               label="reps"
                               value={displayBuffer(buf[`${base}:reps`] ?? "", "int")}
                               active={active === `${base}:reps`}
-                              onPress={setActive}
+                              armed={armed}
+                              onPress={focusField}
+                              wide={!showsLoad(m)}
                             />
-                            <Slot
-                              id={`${base}:load`}
-                              label={unit}
-                              value={displayBuffer(buf[`${base}:load`] ?? "", "load")}
-                              active={active === `${base}:load`}
-                              onPress={setActive}
-                            />
+                            {showsLoad(m) ? (
+                              <Slot
+                                id={`${base}:load`}
+                                label={unit}
+                                value={displayBuffer(buf[`${base}:load`] ?? "", "load")}
+                                active={active === `${base}:load`}
+                                armed={armed}
+                                onPress={focusField}
+                              />
+                            ) : (
+                              // Weighted pull-ups and dips exist; an empty kg box
+                              // on every gymnastics row in every WOD does not
+                              // earn its place. One tap brings it back.
+                              r === 0 && (
+                                <Pressable
+                                  onPress={() =>
+                                    setWeighted((w) => new Set(w).add(m.key))
+                                  }
+                                  hitSlop={8}
+                                  style={st.addLoad}
+                                >
+                                  <Text style={st.addLoadText}>＋{unit}</Text>
+                                </Pressable>
+                              )
+                            )}
                           </>
                         )}
                       </View>
@@ -658,14 +735,14 @@ export default function LogScreen() {
                   label="reps"
                   value={displayBuffer(buf[`set:${set.key}:reps`] ?? "", "int")}
                   active={active === `set:${set.key}:reps`}
-                  onPress={setActive}
+                  onPress={focusField}
                 />
                 <Slot
                   id={`set:${set.key}:load`}
                   label={unit}
                   value={displayBuffer(buf[`set:${set.key}:load`] ?? "", "load")}
                   active={active === `set:${set.key}:load`}
-                  onPress={setActive}
+                  onPress={focusField}
                   wide
                 />
                 <Pressable
@@ -698,9 +775,9 @@ export default function LogScreen() {
         <View style={st.scoreRow} onLayout={registerRow(["score", "rounds", "reps"])}>
           {draft.scoreType === "rounds_reps" ? (
             <>
-              <BigSlot id="rounds" label="rounds" value={displayBuffer(buf.rounds ?? "", "int", "0")} active={active === "rounds"} onPress={setActive} />
+              <BigSlot id="rounds" label="rounds" value={displayBuffer(buf.rounds ?? "", "int", "0")} active={active === "rounds"} onPress={focusField} />
               <Text style={st.plus}>+</Text>
-              <BigSlot id="reps" label="reps" value={displayBuffer(buf.reps ?? "", "int", "0")} active={active === "reps"} onPress={setActive} />
+              <BigSlot id="reps" label="reps" value={displayBuffer(buf.reps ?? "", "int", "0")} active={active === "reps"} onPress={focusField} />
             </>
           ) : (
             <BigSlot
@@ -708,7 +785,7 @@ export default function LogScreen() {
               label={draft.scoreType === "time" ? "time" : draft.scoreType === "load" ? unit : draft.scoreType}
               value={displayBuffer(buf.score ?? "", fieldKind("score"), draft.scoreType === "time" ? "0:00" : "0")}
               active={active === "score"}
-              onPress={setActive}
+              onPress={focusField}
             />
           )}
         </View>
@@ -781,10 +858,10 @@ export default function LogScreen() {
                 is what moves the flow along, so the pad only has to get out of
                 the way. */}
             {active.startsWith("shape:") ? (
-              <Button label="Done" onPress={() => setActive(null)} style={{ flex: 1 }} />
+              <Button label="Done" onPress={closePad} style={{ flex: 1 }} />
             ) : (
               <>
-                <Button label="Done" variant="ghost" onPress={() => setActive(null)} style={{ flex: 1 }} />
+                <Button label="Done" variant="ghost" onPress={closePad} style={{ flex: 1 }} />
                 <Button
                   label={isLastField ? "Finish" : "Next →"}
                   onPress={goToNextField}
@@ -818,6 +895,7 @@ function Slot({
   label,
   value,
   active,
+  armed,
   onPress,
   wide,
 }: {
@@ -825,21 +903,36 @@ function Slot({
   label: string;
   value: string;
   active: boolean;
+  /** True when this field is the active one AND its value is selected. */
+  armed?: boolean;
   onPress: (id: string) => void;
   wide?: boolean;
 }) {
+  const selected = !!active && !!armed;
   return (
     <Pressable onPress={() => onPress(id)} style={[st.slot, wide && st.slotWide, active && st.slotOn]}>
-      <Text style={[st.slotValue, active && st.slotValueOn]} numberOfLines={1}>{value}</Text>
+      <View style={[st.sel, selected && st.selOn]}>
+        <Text
+          style={[st.slotValue, active && st.slotValueOn, selected && st.selText]}
+          numberOfLines={1}
+        >
+          {value}
+        </Text>
+      </View>
       <Text style={st.slotLabel}>{label}</Text>
     </Pressable>
   );
 }
 
 function BigSlot(props: Parameters<typeof Slot>[0]) {
+  const selected = !!props.active && !!props.armed;
   return (
     <Pressable onPress={() => props.onPress(props.id)} style={[st.bigSlot, props.active && st.slotOn]}>
-      <Text style={[st.bigValue, props.active && st.slotValueOn]}>{props.value}</Text>
+      <View style={[st.sel, selected && st.selOn]}>
+        <Text style={[st.bigValue, props.active && st.slotValueOn, selected && st.selText]}>
+          {props.value}
+        </Text>
+      </View>
       <Text style={st.slotLabel}>{props.label}</Text>
     </Pressable>
   );
@@ -865,6 +958,25 @@ const st = StyleSheet.create({
     paddingBottom: space.sm,
   },
   stageType: { paddingHorizontal: space.lg, paddingTop: space.md },
+
+  // Text-selection highlight, so an armed field visibly says "type and I go".
+  // Inverted rather than tinted: chalk yellow means "record" and nothing else
+  // (invariant 10), and a coloured selection would compete with it.
+  sel: { paddingHorizontal: 4, borderRadius: radius.sm },
+  selOn: { backgroundColor: colors.textDim },
+  selText: { color: colors.bg },
+
+  addLoad: {
+    minWidth: 62,
+    height: tap.min - 8,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.line,
+  },
+  addLoadText: { color: colors.textFaint, fontSize: t.label, fontWeight: "700" },
 
   movRow: {
     flexDirection: "row",

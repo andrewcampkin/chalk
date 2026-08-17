@@ -12,7 +12,21 @@ and defaults to `diff`. Nothing deploys on push or merge.
 
 ## One-time setup
 
-Both steps must be run by a human with real credentials.
+Run by a human with real credentials. The workflow cannot do any of it: the
+role it assumes is the thing being created here.
+
+**0. Bootstrap CDK** for the account and region:
+
+```bash
+npm ci
+npx cdk bootstrap aws://ACCOUNT_ID/ap-southeast-2
+```
+
+This creates the `cdk-hnb659fds-*` roles the deploy role is allowed to assume.
+Note that by default the CloudFormation execution role it creates carries
+`AdministratorAccess` — that, not the GitHub role, is the real ceiling on what a
+deploy can do. `--cloudformation-execution-policies` narrows it if that matters
+more than future stack changes working without attention.
 
 **1. Let GitHub assume a deploy role.** Create the OIDC provider once
 (`token.actions.githubusercontent.com`, audience `sts.amazonaws.com`), then a
@@ -47,13 +61,12 @@ workflow cannot reach the rest of the account:
 }
 ```
 
-Put the role ARN in the repository variable `AWS_DEPLOY_ROLE_ARN`.
+Put the role ARN in the repository variable `AWS_DEPLOY_ROLE_ARN` (a variable,
+not a secret — an ARN names a role, it does not grant anything).
 
-**2. Bootstrap CDK** once for the account and region:
-
-```bash
-npx cdk bootstrap aws://ACCOUNT_ID/ap-southeast-2
-```
+**2. Merge the workflow to `main`.** GitHub only offers *Run workflow* for a
+`workflow_dispatch` file that exists on the default branch. Merging is safe:
+there is no push or pull_request trigger, so nothing deploys.
 
 ## Adding a user
 
@@ -80,9 +93,23 @@ aws cognito-idp admin-set-user-password \
 
 ## After a deploy
 
-The stack prints `Region`, `UserPoolId`, `UserPoolClientId` and `ApiBaseUrl`.
-Those four go into the app's `app.json` under `extra`. None of them is a
-secret — they name the app, they do not authorise anything.
+The stack prints `Region`, `UserPoolId`, `UserPoolClientId` and `ApiBaseUrl`,
+and they can be read back at any time:
+
+```bash
+aws cloudformation describe-stacks --stack-name ChalkSync \
+  --region ap-southeast-2 --query 'Stacks[0].Outputs' --output table
+```
+
+Those four go into the app's `app.json` under `extra`. None is a secret — they
+name the app, they do not authorise anything.
+
+Worth confirming the front door is shut:
+
+```bash
+curl -i https://API_ID.execute-api.ap-southeast-2.amazonaws.com/sync
+# expect: HTTP/2 401
+```
 
 ## Working on it locally
 

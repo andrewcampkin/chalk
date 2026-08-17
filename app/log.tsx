@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Button, Chip, ChipRow, Keypad, WrapRow, s as ui } from "../components/ui";
+import { Button, Chip, ChipRow, Keypad } from "../components/ui";
 import { DateField } from "../components/DateField";
 import { FeelPicker } from "../components/Feel";
 import { MovementPicker } from "../components/MovementPicker";
@@ -20,8 +20,8 @@ import { describeIso, todayIso } from "../lib/dates";
 import { DISTANCE_PRESETS, isDistanceMovement, presetLabel } from "../lib/inputs";
 import { PrToast } from "../components/PrToast";
 import type { BlockFormat } from "../db/schema";
-import { formatLoad } from "../db/score";
-import { generateRawText, useDraft } from "../lib/draft";
+import { StageCarousel, StageTrail } from "../components/Stage";
+import { generateRawText, useDraft, wodHeader, type Draft } from "../lib/draft";
 import {
   appendDigit,
   appendDot,
@@ -37,13 +37,31 @@ import { colors, radius, space, tap, type as t } from "../lib/theme";
 import { movements as movementsTable } from "../db/schema";
 import { eq } from "drizzle-orm";
 
-const FORMATS: { key: BlockFormat; label: string }[] = [
-  { key: "for_time", label: "For time" },
-  { key: "amrap", label: "AMRAP" },
-  { key: "emom", label: "EMOM" },
-  { key: "intervals", label: "Rounds" },
-  { key: "chipper", label: "Chipper" },
-];
+/**
+ * Setting up a WOD is a run of stages, one question at a time, each answered by
+ * rotating a single big value. See components/Stage.tsx for why a rotor rather
+ * than a row of chips.
+ *
+ * Which stages run depends on the format, because a format only earns the
+ * questions it actually raises: a for-time asks how many rounds, an AMRAP how
+ * long, an EMOM both how often and how long.
+ */
+type Stage = "kind" | "format" | "rounds" | "every" | "duration";
+
+/**
+ * Three formats, not five.
+ *
+ * "Chipper" and "Rounds" were both for-time workouts wearing a different hat: a
+ * chipper is a for-time you go through once, and "5 rounds for time" is one you
+ * go through five times. Both are now the Rounds stage, which is also the only
+ * way to say two rounds, or ten.
+ */
+const FORMAT_KEYS: BlockFormat[] = ["for_time", "amrap", "emom"];
+const FORMAT_LABEL: Record<string, string> = {
+  for_time: "For time",
+  amrap: "AMRAP",
+  emom: "EMOM",
+};
 
 /** Maps a slot's field id suffix onto the draft column it writes. */
 const FIELD_COLUMN: Record<string, string> = {
@@ -53,15 +71,113 @@ const FIELD_COLUMN: Record<string, string> = {
   calories: "calories",
 };
 
-const DURATIONS = [8, 10, 12, 15, 20, 30];
-const SCHEMES = ["21-15-9", "21-18-15-12-9", "10-9-8-7-6-5-4-3-2-1", "5 rounds", "3 rounds"];
+/**
+ * What each numeric stage rotates through. These are the counts a class
+ * actually programmes, and rotation wraps, so nothing here is a ceiling —
+ * anything else is one "Type a number" away on the pad.
+ */
+const ROUNDS = [1, 2, 3, 4, 5, 6, 8, 10];
+const DURATIONS = [5, 8, 10, 12, 15, 20, 24, 30];
+/** EMOM interval. 1 is a plain EMOM; 2 and 3 read as E2MOM and E3MOM. */
+const EVERY = [1, 2, 3, 4, 5];
+
+/** Which draft field each numeric stage rotates, and what it may rotate to. */
+const NUMERIC: Record<string, { options: number[]; field: string }> = {
+  rounds: { options: ROUNDS, field: "shape:rounds" },
+  duration: { options: DURATIONS, field: "shape:duration" },
+  every: { options: EVERY, field: "shape:every" },
+};
+
+const numBuf = (n: number | null | undefined) => (n != null ? String(n) : "");
+
+/**
+ * Old blocks still carry the formats the picker dropped. Both were time-scored
+ * variants of a for-time, so show them as one rather than opening a saved
+ * workout on a stage with nothing on it.
+ */
+const shownFormat = (f: BlockFormat): BlockFormat =>
+  f === "chipper" || f === "intervals" ? "for_time" : f;
+
+/**
+ * The run of questions for a given draft. Strength asks none of them — its sets
+ * are its shape, and it goes straight to picking the lift.
+ */
+function stagesFor(kind: Draft["kind"], format: BlockFormat): Stage[] {
+  if (kind === "strength") return ["kind"];
+  const f = shownFormat(format);
+  if (f === "amrap") return ["kind", "format", "duration"];
+  if (f === "emom") return ["kind", "format", "every", "duration"];
+  return ["kind", "format", "rounds"];
+}
+
+/** The number a numeric stage is currently sitting on. */
+function stageValue(d: Draft, s: Stage): number | null {
+  if (s === "rounds") return d.rounds;
+  if (s === "duration") return d.durationMin;
+  if (s === "every") return d.everyMin;
+  return null;
+}
+
+/** How a number reads on a given stage. */
+function numberLabel(s: Stage, n: number): string {
+  if (s === "rounds") return n === 1 ? "1 round" : `${n} rounds`;
+  if (s === "every") return n === 1 ? "Every min" : `Every ${n} min`;
+  return `${n} min`;
+}
+
+/**
+ * Everything a stage can be swiped to.
+ *
+ * A number typed on the pad is folded into the list in its proper place, so
+ * the row still shows where the value sits among the usual ones instead of
+ * quietly becoming un-swipeable.
+ */
+function optionsFor(d: Draft, s: Stage): { key: string; label: string }[] {
+  if (s === "kind") {
+    return [
+      { key: "wod", label: "WOD" },
+      { key: "strength", label: "Strength" },
+    ];
+  }
+  if (s === "format") {
+    return FORMAT_KEYS.map((f) => ({ key: f, label: FORMAT_LABEL[f] }));
+  }
+  const current = stageValue(d, s);
+  const values = [...NUMERIC[s].options];
+  if (current != null && !values.includes(current)) values.push(current);
+  return values.sort((a, b) => a - b).map((n) => ({ key: String(n), label: numberLabel(s, n) }));
+}
+
+/** Which option the stage is currently sitting on. */
+function currentKey(d: Draft, s: Stage): string {
+  if (s === "kind") return d.kind;
+  if (s === "format") return shownFormat(d.format);
+  return numBuf(stageValue(d, s));
+}
+
+/** The same answer, shortened for the trail above the form. */
+function trailLabel(d: Draft, s: Stage): string {
+  if (s === "kind") return d.kind === "wod" ? "WOD" : "Strength";
+  if (s === "format") return FORMAT_LABEL[shownFormat(d.format)] ?? "For time";
+  const n = stageValue(d, s);
+  return n == null ? "—" : numberLabel(s, n).toLowerCase();
+}
+
+const STAGE_TITLE: Record<Stage, string> = {
+  kind: "What was it",
+  format: "Format",
+  rounds: "Rounds",
+  every: "Every",
+  duration: "For how long",
+};
 
 export default function LogScreen() {
   const router = useRouter();
   const nav = useNavigation();
   const insets = useSafeAreaInsets();
-  const { draft, unit, load, patch, setFormat, addMovement, removeMovement, patchMovement, addSet, patchSet, removeSet } =
+  const { draft, unit, load, patch, setKind, setFormat, addMovement, removeMovement, patchMovement, addSet, patchSet, removeSet } =
     useDraft();
+  const format = shownFormat(draft.format);
 
   // Present when opened from a saved block. Everything else is identical —
   // the same form edits an existing block and creates a new one.
@@ -76,6 +192,13 @@ export default function LogScreen() {
   const [buf, setBuf] = useState<Record<string, string>>({});
   const [prs, setPrs] = useState<SavedPr[] | null>(null);
   const [saving, setSaving] = useState(false);
+  /**
+   * Which question is on screen, or null once they are all answered. A new log
+   * runs the stages; opening a saved block skips them, because coming back to
+   * fix one number should not mean walking the whole setup again. The trail
+   * above the form reopens any of them.
+   */
+  const [stage, setStage] = useState<Stage | null>(edit ? null : "kind");
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -109,6 +232,8 @@ export default function LogScreen() {
   const fieldOrder = useMemo(() => {
     const ids: string[] = [];
     if (draft.kind === "wod") {
+      // The shape fields are deliberately absent: they are answered by the
+      // stages, and the pad only ever visits one of them on its own.
       for (const m of draft.movements) {
         ids.push(
           ...(isDistanceMovement(m)
@@ -125,7 +250,7 @@ export default function LogScreen() {
       else if (draft.scoreType !== "none") ids.push("score");
     }
     return ids;
-  }, [draft.kind, draft.movements, draft.sets, draft.scoreType]);
+  }, [draft.kind, draft.movements, draft.sets, draft.scoreType, format]);
 
   const activeIndex = active ? fieldOrder.indexOf(active) : -1;
   const isLastField = activeIndex >= 0 && activeIndex === fieldOrder.length - 1;
@@ -172,7 +297,11 @@ export default function LogScreen() {
       if (id === "score") patch({ scoreValue: value });
       else if (id === "rounds") patch({ scoreRounds: value });
       else if (id === "reps") patch({ scoreReps: value });
-      else if (id === "duration") patch({ durationMin: value });
+      // Namespaced because the score has its own "rounds" — the number of
+      // rounds you got is not the number the workout asked for.
+      else if (id === "shape:rounds") patch({ rounds: value });
+      else if (id === "shape:duration") patch({ durationMin: value });
+      else if (id === "shape:every") patch({ everyMin: value });
       else {
         const [scope, key, field] = id.split(":");
         const column = FIELD_COLUMN[field] ?? "reps";
@@ -182,6 +311,88 @@ export default function LogScreen() {
     },
     [fieldKind, patch, patchMovement, patchSet, unit],
   );
+
+  /**
+   * Re-reads the buffers the store just rewrote. Switching format drops the
+   * dials the new one has no use for and clears the score — whose digits meant
+   * seconds a moment ago and would mean rounds now — so the pad has to be told,
+   * or the next tap resumes typing into a number that is no longer there.
+   */
+  const syncBuffers = () => {
+    const d = useDraft.getState().draft;
+    setBuf((b) => ({
+      ...b,
+      score: "",
+      rounds: "",
+      reps: "",
+      "shape:rounds": numBuf(d.rounds),
+      "shape:duration": numBuf(d.durationMin),
+      "shape:every": numBuf(d.everyMin),
+    }));
+    setActive(null);
+  };
+
+  const changeKind = (k: "strength" | "wod") => {
+    setKind(k);
+    syncBuffers();
+  };
+
+  const changeFormat = (f: BlockFormat) => {
+    // Tapping the chip that is already lit does nothing. This is not just a
+    // stray-tap guard: an old block stored as chipper or intervals shows "For
+    // time" as selected, and re-selecting it would clear the score the user
+    // opened the block to keep.
+    if (f === format) return;
+    setFormat(f);
+    syncBuffers();
+  };
+
+  /** The rotor and the pad write the same field, so both move the buffer. */
+  const setDial = (id: string, value: number | null) => commit(id, numBuf(value));
+
+  /* ---- the staged setup --------------------------------------------------- */
+
+  const stages = useMemo(() => stagesFor(draft.kind, draft.format), [draft.kind, draft.format]);
+  const stageIndex = stage ? stages.indexOf(stage) : stages.length;
+  const staging = stage != null;
+
+  const options = useMemo(() => (stage ? optionsFor(draft, stage) : []), [draft, stage]);
+  const optionIndex = stage ? options.findIndex((o) => o.key === currentKey(draft, stage)) : -1;
+
+  /** A swipe settled here, or a peeking neighbour was tapped. */
+  const selectOption = (i: number) => {
+    const key = options[i]?.key;
+    if (key == null || !stage) return;
+    if (stage === "kind") {
+      // Guarded because setKind resets the score and the shape: settling back
+      // on the value you started from must not wipe what is already entered.
+      if (key !== draft.kind) changeKind(key as "strength" | "wod");
+      return;
+    }
+    if (stage === "format") return changeFormat(key as BlockFormat);
+    setDial(NUMERIC[stage].field, Number(key));
+  };
+
+  /**
+   * The centred option was tapped: take it and move on. Choosing and advancing
+   * are one motion, so there is no separate Next.
+   *
+   * Finishing the last stage hands straight over to movement selection, which
+   * is where you were always going. Only on a fresh log — dropping someone into
+   * a full-screen picker because they reopened a block to fix its score would
+   * be an ambush.
+   */
+  const commitStage = () => {
+    const d = useDraft.getState().draft;
+    const list = stagesFor(d.kind, d.format);
+    const next = list[list.indexOf(stage!) + 1] ?? null;
+    setStage(next);
+    if (next != null || editingBlockId != null) return;
+    if (d.kind === "strength" && d.strengthMovementId == null) setPicking("strength");
+    else if (d.kind === "wod" && d.movements.length === 0) setPicking("wod");
+  };
+
+  const trail = stages.slice(0, stageIndex).map((s) => ({ key: s, label: trailLabel(draft, s) }));
 
   const onDigit = (d: string) => active && commit(active, appendDigit(buf[active] ?? "", d, fieldKind(active)));
   const onDot = () => active && commit(active, appendDot(buf[active] ?? ""));
@@ -196,6 +407,9 @@ export default function LogScreen() {
       patch({
         benchmarkId: m.id,
         benchmarkName: m.name,
+        // The prescription is where a ladder's reps come from now — "21-15-9
+        // reps for time", in CrossFit's own words rather than retyped.
+        benchmarkPrescription: row?.prescription ?? null,
         scoreType: (row?.defaultScoreType as any) ?? draft.scoreType,
       });
       const ids = await benchmarkComponentIds(m.id);
@@ -260,55 +474,38 @@ export default function LogScreen() {
           <Text style={st.backdated}>Logging to {describeIso(draft.date)}</Text>
         )}
 
-        <ChipRow>
-          <Chip label="WOD" selected={draft.kind === "wod"} onPress={() => patch({ kind: "wod", format: "for_time", scoreType: "time" })} />
-          <Chip
-            label="Strength"
-            selected={draft.kind === "strength"}
-            onPress={() =>
-              patch({
-                kind: "strength",
-                format: "sets",
-                // A strength block carries no score of its own; the sets do.
-                scoreType: "none",
-                scoreValue: null,
-                scoreRounds: null,
-                scoreReps: null,
-                capped: false,
-              })
-            }
-          />
-        </ChipRow>
+        {/* Everything answered so far, and a way back into any of it. */}
+        <StageTrail items={trail} onPick={(k) => setStage(k as Stage)} />
 
-        {draft.kind === "wod" ? (
+        {staging && (
+          <View onLayout={registerRow(["shape:rounds", "shape:duration", "shape:every"])}>
+            <StageCarousel
+              label={STAGE_TITLE[stage]}
+              options={options}
+              index={optionIndex}
+              // Shows the header being built, live, so the stages never feel
+              // like a form filled in blind.
+              caption={stage === "kind" ? undefined : wodHeader(draft).replace(/:$/, "")}
+              onIndex={selectOption}
+              onCommit={commitStage}
+              total={stages.length}
+              step={stageIndex}
+            />
+
+            {NUMERIC[stage] && (
+              <View style={st.stageType}>
+                <Button
+                  label="Type a number"
+                  variant="ghost"
+                  onPress={() => setActive(NUMERIC[stage].field)}
+                />
+              </View>
+            )}
+          </View>
+        )}
+
+        {staging ? null : draft.kind === "wod" ? (
           <>
-            <ChipRow>
-              {FORMATS.map((f) => (
-                <Chip key={f.key} label={f.label} selected={draft.format === f.key} onPress={() => setFormat(f.key)} />
-              ))}
-            </ChipRow>
-
-            {(draft.format === "amrap" || draft.format === "emom") && (
-              <ChipRow>
-                {DURATIONS.map((d) => (
-                  <Chip
-                    key={d}
-                    label={`${d} min`}
-                    selected={draft.durationMin === d}
-                    onPress={() => patch({ durationMin: d })}
-                  />
-                ))}
-              </ChipRow>
-            )}
-
-            {(draft.format === "for_time" || draft.format === "chipper" || draft.format === "intervals") && (
-              <ChipRow>
-                {SCHEMES.map((sch) => (
-                  <Chip key={sch} label={sch} selected={draft.repScheme === sch} onPress={() => patch({ repScheme: sch })} />
-                ))}
-              </ChipRow>
-            )}
-
             <Text style={st.label}>Movements</Text>
             <ChipRow>
               <Chip label="＋ Find" onPress={() => setPicking("wod")} />
@@ -455,7 +652,7 @@ export default function LogScreen() {
             loads, and a strength record is derived from those rows — never from
             blocks.score_value — so a score field here would be a second place
             to type the same number, able to disagree with the first. */}
-        {draft.kind === "wod" && (
+        {!staging && draft.kind === "wod" && (
           <>
         <Text style={st.label}>Score</Text>
         <View style={st.scoreRow} onLayout={registerRow(["score", "rounds", "reps"])}>
@@ -475,46 +672,59 @@ export default function LogScreen() {
             />
           )}
         </View>
-        <ChipRow>
-          <Chip label="Capped / DNF" selected={draft.capped} onPress={() => patch({ capped: !draft.capped })} />
-        </ChipRow>
+        {/* An AMRAP ends when the clock does — there is nothing to fall short
+            of, so the toggle only appears where a cap can actually be hit.
+            Offering it on every workout invited a meaningless flag that
+            invariant 6 would then quietly bar from the records. */}
+        {draft.scoreType !== "rounds_reps" && (
+          <ChipRow>
+            <Chip label="Capped / DNF" selected={draft.capped} onPress={() => patch({ capped: !draft.capped })} />
+          </ChipRow>
+        )}
           </>
         )}
 
-        <Text style={st.label}>Felt like</Text>
-        <FeelPicker value={draft.feel} onChange={(v) => patch({ feel: v })} />
+        {!staging && (
+          <>
+            <Text style={st.label}>Felt like</Text>
+            <FeelPicker value={draft.feel} onChange={(v) => patch({ feel: v })} />
 
-        {editingBlockId != null && (
-          <View style={{ paddingHorizontal: space.lg, paddingTop: space.xl }}>
-            <Button
-              label="Delete this block"
-              variant="danger"
-              onPress={() =>
-                Alert.alert("Delete block?", "The rest of the session is kept.", [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: async () => {
-                      await deleteBlock(editingBlockId);
-                      router.back();
-                    },
-                  },
-                ])
-              }
+            <Text style={st.label}>As written</Text>
+            <TextInput
+              style={st.raw}
+              value={preview}
+              onChangeText={(v) => patch({ rawText: v, rawTextDirty: true })}
+              multiline
+              placeholder="Paste or type the workout"
+              placeholderTextColor={colors.textFaint}
             />
-          </View>
-        )}
 
-        <Text style={st.label}>As written</Text>
-        <TextInput
-          style={st.raw}
-          value={preview}
-          onChangeText={(v) => patch({ rawText: v, rawTextDirty: true })}
-          multiline
-          placeholder="Paste or type the workout"
-          placeholderTextColor={colors.textFaint}
-        />
+            {/* Last, and well past the Save button's reach. It was sitting
+                directly above the workout text, which is the one field you
+                scroll down to edit. */}
+            {editingBlockId != null && (
+              <View style={{ paddingHorizontal: space.lg, paddingTop: space.xl }}>
+                <Button
+                  label="Delete this block"
+                  variant="danger"
+                  onPress={() =>
+                    Alert.alert("Delete block?", "The rest of the session is kept.", [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Delete",
+                        style: "destructive",
+                        onPress: async () => {
+                          await deleteBlock(editingBlockId);
+                          router.back();
+                        },
+                      },
+                    ])
+                  }
+                />
+              </View>
+            )}
+          </>
+        )}
       </ScrollView>
 
       {active && (
@@ -527,21 +737,32 @@ export default function LogScreen() {
             onClear={() => commit(active, "")}
           />
           <View style={st.padActions}>
-            <Button label="Done" variant="ghost" onPress={() => setActive(null)} style={{ flex: 1 }} />
-            <Button
-              label={isLastField ? "Finish" : "Next →"}
-              onPress={goToNextField}
-              style={{ flex: 1 }}
-            />
+            {/* A staged number has nowhere to walk on to — the stage's own Next
+                is what moves the flow along, so the pad only has to get out of
+                the way. */}
+            {active.startsWith("shape:") ? (
+              <Button label="Done" onPress={() => setActive(null)} style={{ flex: 1 }} />
+            ) : (
+              <>
+                <Button label="Done" variant="ghost" onPress={() => setActive(null)} style={{ flex: 1 }} />
+                <Button
+                  label={isLastField ? "Finish" : "Next →"}
+                  onPress={goToNextField}
+                  style={{ flex: 1 }}
+                />
+              </>
+            )}
           </View>
         </View>
       )}
 
-      {/* Hidden while the pad is open. Save is not the next thing you want
-          mid-entry, and the height it frees is what stops the pad covering the
-          field being typed into. Sits at the bottom of an edge-to-edge screen,
-          so it clears the Android nav bar itself. */}
-      {!active && (
+      {/* Hidden while the pad is open, and while the stages are running: a tap
+          on the carousel is what moves those along, and a Next button beside it
+          would be a second way to do the same thing. Save is not the next thing
+          you want mid-entry either, and the height it frees is what stops the
+          pad covering the field being typed into. Sits at the bottom of an
+          edge-to-edge screen, so it clears the Android nav bar itself. */}
+      {!active && !staging && (
         <View style={[st.footer, { paddingBottom: space.lg + insets.bottom }]}>
           <Button label={saving ? "Saving…" : "Save"} onPress={onSave} disabled={!canSave || saving} />
         </View>
@@ -603,6 +824,8 @@ const st = StyleSheet.create({
     paddingTop: space.lg,
     paddingBottom: space.sm,
   },
+  stageType: { paddingHorizontal: space.lg, paddingTop: space.md },
+
   movRow: {
     flexDirection: "row",
     alignItems: "center",

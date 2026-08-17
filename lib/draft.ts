@@ -43,6 +43,13 @@ export type Draft = {
 
   benchmarkId: number | null;
   benchmarkName: string | null;
+  /**
+   * The seeded prescription — "21-15-9 reps for time: thruster, pull-up". This
+   * is where a ladder's reps come from now that there is no rep-scheme field:
+   * the real wording, straight off the benchmark row, rather than a string
+   * retyped into a chip.
+   */
+  benchmarkPrescription: string | null;
 
   /** Strength: one movement, many sets. */
   strengthMovementId: number | null;
@@ -52,10 +59,16 @@ export type Draft = {
 
   /** WOD: many movements, one score. */
   movements: DraftMovement[];
-  /** "21-15-9", "5 rounds", free text — drives the generated raw text. */
-  repScheme: string;
+  /**
+   * How much work. Which of these apply is decided by `format` — see the shape
+   * comment on the blocks table. Anything the current format does not use is
+   * cleared by setFormat rather than left to linger, so a stage never carries
+   * an answer to a question it stopped asking.
+   */
   rounds: number | null;
   durationMin: number | null;
+  /** EMOM interval: 1 is a plain EMOM, 2 an E2MOM. Null for other formats. */
+  everyMin: number | null;
 
   scoreType: ScoreType;
   scoreValue: number | null;
@@ -65,6 +78,23 @@ export type Draft = {
   /** 1-5, optional. See lib/feel.ts. */
   feel: number | null;
   notes: string;
+};
+
+/**
+ * The score type each format implies. An AMRAP is scored in rounds, a for-time
+ * in seconds — pre-selecting it removes a tap.
+ *
+ * `chipper` and `intervals` are no longer offered by the log form (a chipper is
+ * a for-time with no rounds, and "5 rounds for time" is a for-time with five),
+ * but old blocks still carry them, so they keep their mapping here.
+ */
+const SCORE_TYPE_FOR_FORMAT: Partial<Record<BlockFormat, ScoreType>> = {
+  for_time: "time",
+  chipper: "time",
+  intervals: "time",
+  amrap: "rounds_reps",
+  emom: "reps",
+  max_effort: "reps",
 };
 
 let seq = 0;
@@ -83,14 +113,17 @@ function emptyDraft(kind: "strength" | "wod", date: string): Draft {
     rawTextDirty: false,
     benchmarkId: null,
     benchmarkName: null,
+    benchmarkPrescription: null,
     strengthMovementId: null,
     strengthMovementName: null,
     sets: [{ key: key(), reps: null, loadG: null, isWarmup: false, isFailed: false }],
     gridOpen: false,
     movements: [],
-    repScheme: "",
-    rounds: null,
+    // One round — a chipper, straight through — is the commonest workout there
+    // is, so it is what the Rounds stage opens on rather than a blank.
+    rounds: kind === "wod" ? 1 : null,
     durationMin: null,
+    everyMin: null,
     // Strength has no block-level score: the sets carry the loads, and a rep
     // max is derived from those rows. See app/log.tsx.
     scoreType: kind === "strength" ? "none" : "time",
@@ -110,6 +143,7 @@ type Store = {
   /** Replaces the whole draft — used when opening a saved block for editing. */
   load: (d: Draft) => void;
   patch: (p: Partial<Draft>) => void;
+  setKind: (k: "strength" | "wod") => void;
   setFormat: (f: BlockFormat) => void;
   addMovement: (m: {
     id: number;
@@ -135,21 +169,52 @@ export const useDraft = create<Store>((set, get) => ({
 
   patch: (p) => set((s) => ({ draft: { ...s.draft, ...p } })),
 
+  /**
+   * Switching between a WOD and a strength piece changes what a score even
+   * means, so everything downstream of the choice is reset. Movements and sets
+   * are left alone: they live in separate fields and the two halves of the form
+   * never show both.
+   */
+  setKind: (k) =>
+    set((s) => ({
+      draft: {
+        ...s.draft,
+        kind: k,
+        format: k === "strength" ? "sets" : "for_time",
+        // Strength carries no block-level score — the sets hold the loads, and
+        // a rep max is derived from those rows. See app/log.tsx.
+        scoreType: k === "strength" ? "none" : "time",
+        scoreValue: null,
+        scoreRounds: null,
+        scoreReps: null,
+        capped: false,
+        // The shape describes a WOD and nothing else.
+        rounds: k === "wod" ? 1 : null,
+        durationMin: null,
+        everyMin: null,
+      },
+    })),
+
   setFormat: (f) =>
     set((s) => ({
       draft: {
         ...s.draft,
         format: f,
-        // The score type follows the format — an AMRAP is scored in rounds,
-        // a for-time in seconds. Pre-selecting it removes a tap.
-        scoreType:
-          f === "amrap"
-            ? "rounds_reps"
-            : f === "for_time" || f === "chipper" || f === "intervals"
-              ? "time"
-              : f === "emom" || f === "max_effort"
-                ? "reps"
-                : s.draft.scoreType,
+        scoreType: SCORE_TYPE_FOR_FORMAT[f] ?? s.draft.scoreType,
+        // The score already typed was in the old format's units: 4:12 entered
+        // as a time is 252, which read as a rounds total would claim 252
+        // rounds. The format is chosen before the score in every real flow, so
+        // clearing it costs nothing and stops a nonsense number being saved.
+        scoreValue: null,
+        scoreRounds: null,
+        scoreReps: null,
+        // An AMRAP ends when the clock does — there is no cap to fall short of.
+        capped: f === "amrap" ? false : s.draft.capped,
+        // Drop the answers the new format stops asking for, so nothing stale
+        // reaches the database.
+        rounds: f === "for_time" ? (s.draft.rounds ?? 1) : null,
+        durationMin: f === "amrap" || f === "emom" ? s.draft.durationMin : null,
+        everyMin: f === "emom" ? (s.draft.everyMin ?? 1) : null,
       },
     })),
 
@@ -278,21 +343,46 @@ export function generateRawText(d: Draft, unit: Unit): string {
     return [head, loads ? `${loads} ${unit}` : ""].filter(Boolean).join("\n");
   }
 
-  const header =
-    d.format === "amrap"
-      ? `${d.durationMin ?? "?"} min AMRAP:`
-      : d.format === "emom"
-        ? `EMOM ${d.durationMin ?? "?"} min:`
-        : d.repScheme
-          ? `${d.repScheme} ${FORMAT_LABEL[d.format]}:`.trim()
-          : d.rounds
-            ? `${d.rounds} rounds ${FORMAT_LABEL[d.format]}:`.trim()
-            : `${FORMAT_LABEL[d.format]}:`.replace(/^:$/, "").trim();
+  // A benchmark states itself better than the stages can. Fran is "21-15-9
+  // reps for time", and no round count or per-movement rep box will ever say
+  // that as well as the prescription already does. The auto-tagged components
+  // still get their block_movements rows, so search is unaffected either way.
+  if (d.benchmarkPrescription) {
+    // Anything the user actually typed — a load, a scaled rep count — is worth
+    // keeping alongside it. Bare component names are not: the prescription
+    // just listed them.
+    const own = d.movements.filter(
+      (m) => m.reps != null || m.loadG != null || m.distanceM != null || m.calories != null,
+    );
+    return [`"${d.benchmarkName}"`, d.benchmarkPrescription, ...own.map(line)].join("\n");
+  }
 
   const body = d.movements.map(line).join("\n");
-  return [d.benchmarkName ? `"${d.benchmarkName}"` : "", header, body]
+  return [d.benchmarkName ? `"${d.benchmarkName}"` : "", wodHeader(d), body]
     .filter(Boolean)
     .join("\n");
+}
+
+/**
+ * The line a whiteboard carries above the movements, written the way CrossFit
+ * writes it: "For time:", "5 rounds for time:", "20 min AMRAP:", "EMOM 24 min:".
+ */
+export function wodHeader(d: Draft): string {
+  const label = FORMAT_LABEL[d.format];
+
+  if (d.format === "amrap") return `${d.durationMin ?? "?"} min AMRAP:`;
+
+  if (d.format === "emom") {
+    const mins = d.durationMin ?? "?";
+    // "EMOM" already says every minute. Anything longer has to be spelled out.
+    return (d.everyMin ?? 1) <= 1
+      ? `EMOM ${mins} min:`
+      : `Every ${d.everyMin} min for ${mins} min:`;
+  }
+
+  // A single round is a chipper, and a whiteboard just writes "For time:".
+  if (d.rounds && d.rounds > 1) return `${d.rounds} rounds ${label}:`.trim();
+  return label ? `${label[0].toUpperCase()}${label.slice(1)}:` : "";
 }
 
 /** A sensible block title without asking for one. */

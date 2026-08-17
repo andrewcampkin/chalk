@@ -56,6 +56,7 @@ async function logDay() {
       benchmarkId: fran,
       rawText: '"Fran"\n21-15-9 for time:\nThruster (43 kg)\nPull-up',
       format: "for_time",
+      rounds: 3,
       scoreType: "time",
       scoreValue: 252,
       feel: 5,

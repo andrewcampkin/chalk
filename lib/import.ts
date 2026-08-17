@@ -97,6 +97,12 @@ export function parseBackup(text: string): ParseResult {
         // Invariant 2.
         at(bp, "score value must be a whole number");
       }
+      for (const field of ["rounds", "durationMin", "everyMin"] as const) {
+        const v = b?.shape?.[field];
+        if (v != null && (!Number.isInteger(v) || v < 1)) {
+          at(bp, `${field} must be a whole number of at least 1`);
+        }
+      }
       if (b?.movements != null && !Array.isArray(b.movements)) at(bp, "movements must be a list");
       for (const [mi, m] of (b?.movements ?? []).entries()) {
         if (typeof m?.slug !== "string" || !m.slug.trim()) {
@@ -158,6 +164,12 @@ export async function importBackup(db: DB, doc: ExportDoc): Promise<ImportSummar
           benchmarkId: benchmarkIdFor(b.benchmark, slugToId.map),
           rawText: b.rawText,
           format: b.format as any,
+          // Absent in v1 and v2 files, and on anything hand-edited. The header
+          // line survives in rawText either way, so a missing shape costs the
+          // log form its pre-lit chips and nothing more.
+          rounds: b.shape?.rounds ?? null,
+          durationMin: b.shape?.durationMin ?? null,
+          everyMin: b.shape?.everyMin ?? null,
           scoreType: (b.score?.type ?? "none") as any,
           scoreValue: b.score?.value ?? null,
           scoreRounds: b.score?.rounds ?? null,

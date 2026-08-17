@@ -53,6 +53,7 @@ export async function saveDraft(
       // Invariant 1: never store an empty verbatim record.
       rawText: rawText.trim() || generateTitle(draft),
       format: draft.format,
+      ...shapeColumns(draft),
       scoreType: draft.scoreType,
       scoreValue: draft.scoreValue,
       scoreRounds: draft.scoreRounds,
@@ -120,6 +121,7 @@ async function updateBlock(draft: Draft, unit: Unit, blockId: number) {
       benchmarkId: draft.benchmarkId,
       rawText: rawText.trim() || generateTitle(draft),
       format: draft.format,
+      ...shapeColumns(draft),
       scoreType: draft.scoreType,
       scoreValue: draft.scoreValue,
       scoreRounds: draft.scoreRounds,
@@ -151,6 +153,24 @@ async function updateBlock(draft: Draft, unit: Unit, blockId: number) {
     .where(eq(prs.blockId, blockId));
 
   return { sessionId, blockId, newPrs: newPrs as SavedPr[] };
+}
+
+/**
+ * The structured echo of the header line — "5 rounds", "20 min", "E2MOM".
+ * Written so that reopening a block redisplays the stages as they were
+ * answered; `raw_text` reads well but cannot be parsed back reliably.
+ *
+ * Only a WOD has a shape. A strength block's structure is its set rows.
+ */
+function shapeColumns(draft: Draft) {
+  if (draft.kind !== "wod") {
+    return { rounds: null, durationMin: null, everyMin: null };
+  }
+  return {
+    rounds: draft.rounds,
+    durationMin: draft.durationMin,
+    everyMin: draft.everyMin,
+  };
 }
 
 async function deleteSessionIfEmpty(sessionId: number) {

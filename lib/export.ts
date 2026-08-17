@@ -10,6 +10,11 @@ type DB = BaseSQLiteDatabase<any, any, any>;
  *     slug is the stable machine key; a display name can be edited, and a
  *     restore that silently failed to re-tag Fran would be worse than one that
  *     refused to run. Import still accepts version 1.
+ *
+ * `shape` was added to blocks without a version bump, on purpose. It is purely
+ * additive and everything in it is already stated in plain words by `rawText`,
+ * so a reader that ignores it loses nothing — whereas bumping would make older
+ * builds reject the whole file, which is a far worse trade for a nicety.
  */
 export const EXPORT_VERSION = 2;
 
@@ -56,6 +61,16 @@ export type ExportBlock = {
   /** Invariant 1: the verbatim record. The one field that must never be lost. */
   rawText: string;
   format: string;
+  /**
+   * The structured echo of the header line, so a restore redisplays the log
+   * form's dials. Null throughout on strength blocks and on anything written
+   * before the dials existed; `rawText` says the same thing in words.
+   */
+  shape: {
+    rounds: number | null;
+    durationMin: number | null;
+    everyMin: number | null;
+  };
   score: {
     type: string;
     value: number | null;
@@ -139,6 +154,7 @@ export async function buildExportDoc(db: DB, now = new Date()): Promise<ExportDo
         benchmark: b.benchmarkId != null ? (refById.get(b.benchmarkId) ?? null) : null,
         rawText: b.rawText,
         format: b.format,
+        shape: { rounds: b.rounds, durationMin: b.durationMin, everyMin: b.everyMin },
         score: {
           type: b.scoreType,
           value: b.scoreValue,

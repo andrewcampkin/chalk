@@ -47,9 +47,12 @@ export async function draftFromBlock(
     .where(eq(blockMovements.blockId, blockId))
     .orderBy(asc(blockMovements.position), asc(blockMovements.setNumber));
 
-  const benchmarkName = block.benchmarkId
-    ? ((await db.select({ name: movements.name }).from(movements).where(eq(movements.id, block.benchmarkId)))[0]?.name ?? null)
-    : null;
+  const [benchmark] = block.benchmarkId
+    ? await db
+        .select({ name: movements.name, prescription: movements.prescription })
+        .from(movements)
+        .where(eq(movements.id, block.benchmarkId))
+    : [];
 
   const buffers: Record<string, string> = {};
   let n = 0;
@@ -94,6 +97,11 @@ export async function draftFromBlock(
     };
   });
 
+  const numBuf = (n: number | null) => (n != null ? String(n) : "");
+  buffers["shape:rounds"] = numBuf(block.rounds);
+  buffers["shape:duration"] = numBuf(block.durationMin);
+  buffers["shape:every"] = numBuf(block.everyMin);
+
   if (block.scoreType === "rounds_reps") {
     buffers.rounds = block.scoreRounds != null ? String(block.scoreRounds) : "";
     buffers.reps = block.scoreReps != null ? String(block.scoreReps) : "";
@@ -113,7 +121,8 @@ export async function draftFromBlock(
     rawText: block.rawText,
     rawTextDirty: true,
     benchmarkId: block.benchmarkId,
-    benchmarkName,
+    benchmarkName: benchmark?.name ?? null,
+    benchmarkPrescription: benchmark?.prescription ?? null,
     strengthMovementId: setRows[0]?.movementId ?? null,
     strengthMovementName: setRows[0]?.name ?? null,
     sets: sets.length
@@ -121,9 +130,9 @@ export async function draftFromBlock(
       : [{ key: key(), reps: null, loadG: null, isWarmup: false, isFailed: false }],
     gridOpen: sets.length > 1,
     movements: draftMovements,
-    repScheme: "",
-    rounds: null,
-    durationMin: null,
+    rounds: block.rounds,
+    durationMin: block.durationMin,
+    everyMin: block.everyMin,
     scoreType: block.scoreType,
     scoreValue: block.scoreValue,
     scoreRounds: block.scoreRounds,

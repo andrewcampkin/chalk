@@ -408,7 +408,7 @@ export async function sampleDataCount(db: DB): Promise<number> {
 
 /**
  * One row per movement per round, exactly as lib/save.ts writes them —
- * invariant 4. setNumber stays null on a single-round workout so a chipper and
+ * setNumber stays null on a single-round workout so a chipper and
  * an AMRAP look the way they always did.
  *
  * A movement this install has somehow not seeded is skipped rather than

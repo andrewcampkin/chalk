@@ -39,24 +39,12 @@ import { movements as movementsTable } from "../db/schema";
 import { eq } from "drizzle-orm";
 
 /**
- * Setting up a WOD is a run of stages, one question at a time, each answered by
- * rotating a single big value. See components/Stage.tsx for why a rotor rather
- * than a row of chips.
- *
  * Which stages run depends on the format, because a format only earns the
- * questions it actually raises: a for-time asks how many rounds, an AMRAP how
- * long, an EMOM both how often and how long.
+ * questions it raises: a for-time asks how many rounds, an AMRAP how long, an
+ * EMOM both how often and how long.
  */
 type Stage = "kind" | "format" | "rounds" | "every" | "duration";
 
-/**
- * Three formats, not five.
- *
- * "Chipper" and "Rounds" were both for-time workouts wearing a different hat: a
- * chipper is a for-time you go through once, and "5 rounds for time" is one you
- * go through five times. Both are now the Rounds stage, which is also the only
- * way to say two rounds, or ten.
- */
 const FORMAT_KEYS: BlockFormat[] = ["for_time", "amrap", "emom"];
 const FORMAT_LABEL: Record<string, string> = {
   for_time: "For time",
@@ -72,11 +60,7 @@ const FIELD_COLUMN: Record<string, string> = {
   calories: "calories",
 };
 
-/**
- * What each numeric stage rotates through. These are the counts a class
- * actually programmes, and rotation wraps, so nothing here is a ceiling —
- * anything else is one "Type a number" away on the pad.
- */
+/** The counts a class actually programmes. Not a ceiling — the pad covers the rest. */
 const ROUNDS = [1, 2, 3, 4, 5, 6, 8, 10];
 const DURATIONS = [5, 8, 10, 12, 15, 20, 24, 30];
 /** EMOM interval. 1 is a plain EMOM; 2 and 3 read as E2MOM and E3MOM. */
@@ -91,11 +75,7 @@ const NUMERIC: Record<string, { options: number[]; field: string }> = {
 
 const numBuf = (n: number | null | undefined) => (n != null ? String(n) : "");
 
-/**
- * Old blocks still carry the formats the picker dropped. Both were time-scored
- * variants of a for-time, so show them as one rather than opening a saved
- * workout on a stage with nothing on it.
- */
+/** Old blocks carry formats the picker no longer offers; both were for-times. */
 const shownFormat = (f: BlockFormat): BlockFormat =>
   f === "chipper" || f === "intervals" ? "for_time" : f;
 
@@ -269,13 +249,9 @@ export default function LogScreen() {
   const isLastField = activeIndex >= 0 && activeIndex === fieldOrder.length - 1;
 
   /**
-   * Moves to a field and arms it if it already holds a number: the value shows
-   * as selected and the next digit replaces it outright.
-   *
-   * Typing into a box that reads 21 almost always means "make it 15", not
-   * "make it 215". Appending is a text-box habit, and here it produces numbers
-   * that are wrong by an order of magnitude. Tapping the armed field again
-   * disarms it, so correcting a digit is still possible without retyping.
+   * Arms a field that already holds a number, so the next digit replaces it:
+   * typing into a box reading 21 means "make it 15", not "make it 215".
+   * Tapping the armed field again disarms it to correct a digit in place.
    */
   const focusField = (id: string) => {
     if (id === active) {
@@ -792,7 +768,7 @@ export default function LogScreen() {
         {/* An AMRAP ends when the clock does — there is nothing to fall short
             of, so the toggle only appears where a cap can actually be hit.
             Offering it on every workout invited a meaningless flag that
-            invariant 6 would then quietly bar from the records. */}
+            would then be quietly barred from the records. */}
         {draft.scoreType !== "rounds_reps" && (
           <ChipRow>
             <Chip label="Capped / DNF" selected={draft.capped} onPress={() => patch({ capped: !draft.capped })} />
@@ -854,9 +830,7 @@ export default function LogScreen() {
             onClear={() => commit(active, "")}
           />
           <View style={st.padActions}>
-            {/* A staged number has nowhere to walk on to — the stage's own Next
-                is what moves the flow along, so the pad only has to get out of
-                the way. */}
+            {/* A staged number has nowhere to walk on to. */}
             {active.startsWith("shape:") ? (
               <Button label="Done" onPress={closePad} style={{ flex: 1 }} />
             ) : (
@@ -961,7 +935,7 @@ const st = StyleSheet.create({
 
   // Text-selection highlight, so an armed field visibly says "type and I go".
   // Inverted rather than tinted: chalk yellow means "record" and nothing else
-  // (invariant 10), and a coloured selection would compete with it.
+  // and a coloured selection would compete with it.
   sel: { paddingHorizontal: 4, borderRadius: radius.sm },
   selOn: { backgroundColor: colors.textDim },
   selText: { color: colors.bg },
@@ -1019,7 +993,7 @@ const st = StyleSheet.create({
   },
   flagText: { color: colors.textFaint, fontSize: t.label, fontWeight: "700" },
   // Filled rather than coloured. Chalk yellow means "record" and nothing else
-  // (invariant 10); a lit-up warm-up flag would read as an achievement.
+  // a lit-up flag would read as an achievement.
   flagOn: { color: colors.text },
   flagBoxOn: { backgroundColor: colors.surfaceHi, borderColor: colors.textDim },
 

@@ -50,7 +50,7 @@ export async function saveDraft(
       kind: draft.kind,
       title: generateTitle(draft),
       benchmarkId: draft.benchmarkId,
-      // Invariant 1: never store an empty verbatim record.
+      // Never store an empty verbatim record.
       rawText: rawText.trim() || generateTitle(draft),
       format: draft.format,
       ...shapeColumns(draft),
@@ -100,7 +100,7 @@ export async function saveDraft(
  * leaving an orphan behind.
  *
  * PRs are always fully rebuilt. An edit can lower a value that currently holds
- * a record, and no incremental comparison can detect that (invariant 3): the
+ * a record, and no incremental comparison can detect that: the
  * cache has to be reconstructed from what the blocks now say. Moving the block
  * to a different date needs the same treatment, since record chronology
  * depends on the order.
@@ -228,7 +228,7 @@ async function writeMovementRows(blockId: number, draft: Draft) {
     }
   }
 
-  // One row per movement per round — invariant 4, applied to a WOD. Fran is six
+  // One row per movement per round, the same rule strength sets follow. Fran is six
   // rows, not two, which is what lets 21-15-9 be recorded as the three different
   // rounds it actually is instead of being flattened to "21 and something".
   // setNumber is the round; it stays null when there is only one, so a chipper

@@ -12,18 +12,13 @@ import {
 import { colors, radius, space, tap, type as t } from "../lib/theme";
 
 /**
- * The staged setup: one question on screen at a time, answered by swiping
- * sideways through its options and tapping the one under your thumb.
- *
- * A thumb travelling sideways is how you choose things on a phone. The earlier
- * pass at this had arrow buttons either side and a Next button below, which is
- * a mouse-shaped design wearing a phone's clothes: three separate targets to
- * hit accurately for what is really one gesture. Here the swipe changes the
- * value and the tap commits it, so choosing and advancing are the same motion.
+ * One question on screen at a time, answered by swiping sideways through its
+ * options and tapping the one under your thumb. The swipe changes the value and
+ * the tap commits it, so choosing and advancing are one motion.
  *
  * Neighbours stay half-visible and dimmed on both sides. That is the only thing
- * telling you the row can be swiped at all, so it is not decoration — never
- * widen the item to fill the card.
+ * telling you the row can be swiped at all — never widen the item to fill the
+ * card.
  */
 
 export type StageOption = { key: string; label: string };
@@ -220,7 +215,7 @@ const s = StyleSheet.create({
 
   dots: { flexDirection: "row", justifyContent: "center", gap: space.sm, marginTop: space.md },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.line },
-  // Not the accent: chalk yellow means "record" and nothing else (invariant 10).
+  // Not the accent: chalk yellow means "record" and nothing else.
   dotOn: { backgroundColor: colors.textDim },
 
   trail: {

@@ -26,17 +26,11 @@ export function isDistanceMovement(m: MovementShape): boolean {
 }
 
 /**
- * Gymnastics is your own bodyweight, so it gets no kilos box.
- *
- * This one keys on modality where the distance question keys on score type,
- * and that is not an inconsistency: "is it measured in metres" is a property of
- * how the movement is counted, while "is there a barbell" is a property of what
- * the movement is. A pull-up and a double-under are both counted in reps, and
- * only one of them ever has a plate on it.
- *
- * Weighted variants do exist, so the log form can still reveal a load on
- * request — it is just not sitting there on the common path, where every
- * pull-up in every WOD would otherwise carry an empty kg box.
+ * Gymnastics is your own bodyweight, so it gets no kilos box. Keyed on modality
+ * where the distance question keys on score type: "is it measured in metres" is
+ * about how a movement is counted, "is there a barbell" about what it is. A
+ * pull-up and a double-under are both counted in reps, and only one ever has a
+ * plate on it. Weighted variants are revealed on request by the log form.
  */
 export function isBodyweight(m: MovementShape): boolean {
   return m.modality === "gymnastics";

@@ -94,7 +94,7 @@ describe("sample data", () => {
       .from(blockMovements)
       .where(eq(blockMovements.blockId, fran.id))
       .orderBy(blockMovements.position, blockMovements.setNumber);
-    // Two movements over three rounds — six rows, not two (invariant 4).
+    // Two movements over three rounds — six rows, not two.
     expect(rows).toHaveLength(6);
     expect(
       rows.filter((r: any) => r.movementId === thruster).map((r: any) => [r.setNumber, r.reps]),

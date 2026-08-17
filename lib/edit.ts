@@ -11,7 +11,7 @@ import type { Unit } from "../db/score";
  * so every field redisplays the value that is actually stored.
  *
  * `rawTextDirty` is set true on purpose. The verbatim text is the source of
- * truth (invariant 1) and must survive an edit untouched unless the user
+ * truth and must survive an edit untouched unless the user
  * deliberately rewrites it — regenerating it from the structured fields could
  * quietly discard something typed by hand months ago.
  */

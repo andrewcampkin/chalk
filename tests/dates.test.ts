@@ -11,7 +11,7 @@ import {
   todayIso,
 } from "../lib/dates";
 
-describe("local calendar days — invariant 7", () => {
+describe("local calendar days", () => {
   it("never lets an early-morning session drift to the previous day", () => {
     // 6am local. Anything routed through UTC lands on the 4th for a negative
     // offset, which is the exact bug this guards.

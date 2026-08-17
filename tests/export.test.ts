@@ -94,7 +94,7 @@ describe("export", () => {
     expect(doc.sessions[0].blocks[0].movements).toHaveLength(2);
   });
 
-  it("keeps the verbatim text intact — invariant 1", async () => {
+  it("keeps the verbatim text intact", async () => {
     await logDay();
     const doc = await buildExportDoc(db);
     expect(doc.sessions[0].blocks[0].rawText).toBe("Power clean 2x3, building\n60 / 70 kg");

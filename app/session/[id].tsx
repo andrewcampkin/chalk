@@ -125,7 +125,7 @@ export default function SessionDetail() {
  *
  * generateTitle() and generateRawText() both open a strength block with "Front
  * Squat 5x5", so the card was printing it twice. Trimmed here rather than in
- * the generator: raw_text stays whole (invariant 1), and this is a decision
+ * the generator: raw_text stays whole, and this is a decision
  * about one card rather than about the record.
  */
 function bodyOf(title: string | null, rawText: string): string {

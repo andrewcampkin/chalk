@@ -104,7 +104,7 @@ describe("repMaxes", () => {
   });
 });
 
-describe("PR cache (invariant 3: fully reconstructible)", () => {
+describe("PR cache is fully reconstructible", () => {
   it("ratchets down when a block is corrected", async () => {
     const sn = await idOf("snatch");
     const blockId = await logSet("2026-04-01", sn, 200_000, 1); // typo

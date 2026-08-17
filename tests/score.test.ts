@@ -20,7 +20,7 @@ describe("load", () => {
   it("stores kilos as integer grams", () => {
     expect(kgToGrams(82.5)).toBe(82500);
     expect(kgToGrams(100)).toBe(100_000);
-    // Invariant 2: no floats reach the database.
+    // No floats reach the database.
     expect(Number.isInteger(kgToGrams(60.7))).toBe(true);
   });
 

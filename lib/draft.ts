@@ -103,9 +103,7 @@ export type Draft = {
  * The score type each format implies. An AMRAP is scored in rounds, a for-time
  * in seconds — pre-selecting it removes a tap.
  *
- * `chipper` and `intervals` are no longer offered by the log form (a chipper is
- * a for-time with no rounds, and "5 rounds for time" is a for-time with five),
- * but old blocks still carry them, so they keep their mapping here.
+ * `chipper` and `intervals` are kept for blocks already saved with them.
  */
 const SCORE_TYPE_FOR_FORMAT: Partial<Record<BlockFormat, ScoreType>> = {
   for_time: "time",
@@ -148,7 +146,7 @@ function resizeRounds(movements: DraftMovement[], n: number): DraftMovement[] {
 let seq = 0;
 const key = () => `k${++seq}`;
 
-/** Re-exported so callers have one source of truth for invariant 7. */
+/** Re-exported so callers have one source of truth for local calendar days. */
 export { todayIso } from "./dates";
 
 function emptyDraft(kind: "strength" | "wod", date: string): Draft {

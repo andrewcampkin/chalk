@@ -26,7 +26,7 @@ export const EXPORT_VERSION = 2;
  * movement reference therefore carries its slug and display name rather than a
  * bare foreign key.
  *
- * `prs` is deliberately absent. It is a cache (invariant 3) and rebuilding it
+ * `prs` is deliberately absent. It is a cache and rebuilding it
  * from these rows is the point — exporting it would create a second source of
  * truth that could disagree with the blocks it came from.
  */
@@ -58,7 +58,7 @@ export type ExportBlock = {
   kind: "strength" | "wod";
   title: string | null;
   benchmark: { slug: string; name: string } | null;
-  /** Invariant 1: the verbatim record. The one field that must never be lost. */
+  /** The verbatim record. The one field that must never be lost. */
   rawText: string;
   format: string;
   /**

@@ -157,8 +157,7 @@ export const blocks = sqliteTable(
      *
      * Stored rather than re-derived because `raw_text` reads well but cannot be
      * parsed back reliably, and reopening a block has to redisplay the stages
-     * as they were answered. `raw_text` remains the source of truth (invariant
-     * 1); these are its structured echo, and are null on anything hand-typed.
+     * as they were answered. `raw_text` remains the source of truth; these are its structured echo, and are null on anything hand-typed.
      */
     rounds: integer("rounds"),
     durationMin: integer("duration_min"),

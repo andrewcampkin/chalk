@@ -82,7 +82,7 @@ describe("validating a backup", () => {
     if (!res.ok) expect(res.errors[0]).toContain("newer version");
   });
 
-  it("refuses a block with no workout text — invariant 1", () => {
+  it("refuses a block with no workout text", () => {
     const res = parseBackup(
       JSON.stringify({
         app: "chalk", version: EXPORT_VERSION,
@@ -93,7 +93,7 @@ describe("validating a backup", () => {
     if (!res.ok) expect(res.errors.join()).toContain("workout text");
   });
 
-  it("refuses a non-integer score — invariant 2", () => {
+  it("refuses a non-integer score", () => {
     const res = parseBackup(
       JSON.stringify({
         app: "chalk", version: EXPORT_VERSION,
@@ -163,7 +163,7 @@ describe("restoring", () => {
     expect(twice.counts).toEqual(once.counts);
   });
 
-  it("rebuilds records instead of trusting the file — invariant 3", async () => {
+  it("rebuilds records instead of trusting the file", async () => {
     await logRealisticDay();
     const doc: any = await buildExportDoc(db);
     // A backup that has been tampered with, or written by an older build.
@@ -202,7 +202,7 @@ describe("restoring", () => {
         rawText: "21-15-9 reps for time:\nThruster (43 kg)", scoreType: "time", scoreValue: 252,
       })
       .returning();
-    // One row per movement per round — invariant 4 applied to a WOD.
+    // One row per movement per round, as a strength set would be.
     await db.insert(blockMovements).values(
       [21, 15, 9].map((reps, i) => ({
         blockId: b.id, movementId: thruster, position: 0, setNumber: i + 1, reps, loadG: 43_000,
@@ -245,7 +245,7 @@ describe("restoring", () => {
 
     await importBackup(db, parsed.doc);
     // The header line still says 21-15-9 in words; only the stage's answer is
-    // lost, and the verbatim text is the source of truth anyway (invariant 1).
+    // lost, and the verbatim text is the source of truth anyway.
     const [wod] = await db.select().from(blocks).where(eq(blocks.title, "Fran"));
     expect(wod.rounds).toBeNull();
     expect(wod.rawText).toContain("21-15-9");

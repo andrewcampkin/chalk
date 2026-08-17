@@ -1,31 +1,33 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  emptyRound,
   generateRawText,
+  roundCount,
   useDraft,
   wodHeader,
   type Draft,
   type DraftMovement,
+  type RoundEntry,
 } from "../lib/draft";
 
 /**
- * The workout's shape — how many rounds, how long the clock runs, how often the
- * bell goes — is what the log form's dials write, and `wodHeader` is where it
- * turns back into the line a whiteboard carries. Worth testing properly: the
- * numbers are only ever seen again through this function.
+ * The workout's shape — how many rounds, what happens in each of them, how long
+ * the clock runs — is what the staged setup and the round grid write, and the
+ * text generator is where it turns back into the lines a whiteboard carries.
+ * Worth testing properly: the numbers are only ever read back through here.
  */
 
-const mov = (name: string, over: Partial<DraftMovement> = {}): DraftMovement => ({
+/** One argument per round, so mov("Thruster", {reps:21}, {reps:15}) is a ladder. */
+const mov = (name: string, ...rounds: Partial<RoundEntry>[]): DraftMovement => ({
   key: name,
   movementId: 1,
   name,
   modality: null,
   defaultScoreType: null,
-  reps: null,
-  loadG: null,
-  distanceM: null,
-  calories: null,
-  ...over,
+  rounds: (rounds.length ? rounds : [{}]).map((r) => ({ ...emptyRound(), ...r })),
 });
+
+const reps = (...ns: number[]) => ns.map((n) => ({ reps: n }));
 
 function draft(over: Partial<Draft> = {}): Draft {
   useDraft.getState().start("wod", "2026-08-17");
@@ -77,9 +79,52 @@ describe("generateRawText", () => {
     const d = draft({
       format: "for_time",
       rounds: 5,
-      movements: [mov("Pull-up", { reps: 7 }), mov("Push-up", { reps: 14 })],
+      movements: [mov("Pull-up", ...reps(7, 7, 7, 7, 7)), mov("Push-up", ...reps(14, 14, 14, 14, 14))],
     });
     expect(generateRawText(d, "kg")).toBe("5 rounds for time:\n7 Pull-up\n14 Push-up");
+  });
+
+  it("writes a shared ladder as the header, the way a whiteboard does", () => {
+    const d = draft({
+      format: "for_time",
+      rounds: 3,
+      movements: [
+        mov("Thruster", { reps: 21, loadG: 43_000 }, { reps: 15, loadG: 43_000 }, { reps: 9, loadG: 43_000 }),
+        mov("Pull-up", ...reps(21, 15, 9)),
+      ],
+    });
+    // Not "3 rounds for time" — the ladder is what defines the workout, and
+    // repeating it against each line would read as a contradiction.
+    expect(generateRawText(d, "kg")).toBe("21-15-9 reps for time:\nThruster (43 kg)\nPull-up");
+  });
+
+  it("gives each movement its own ladder when they differ", () => {
+    const d = draft({
+      format: "for_time",
+      rounds: 4,
+      movements: [
+        mov("Walking Lunge", ...reps(20, 15, 10, 5)),
+        // Open 25.1's shape: one movement climbs while the other holds.
+        mov("Burpee", ...reps(3, 3, 3, 3)),
+      ],
+    });
+    expect(generateRawText(d, "kg")).toBe(
+      "4 rounds for time:\n20-15-10-5 Walking Lunge\n3 Burpee",
+    );
+  });
+
+  it("ladders a load that climbs while the reps fall", () => {
+    const d = draft({
+      format: "for_time",
+      rounds: 3,
+      movements: [
+        mov("Squat Clean", { reps: 3, loadG: 80_000 }, { reps: 2, loadG: 90_000 }, { reps: 1, loadG: 100_000 }),
+      ],
+    });
+    // The Games' Climbing Couplet shape. The ladder is shared (there is only
+    // one movement following it), so it heads the workout and the line carries
+    // the loads that go with it.
+    expect(generateRawText(d, "kg")).toBe("3-2-1 reps for time:\nSquat Clean (80-90-100 kg)");
   });
 
   it("lets a benchmark state itself, ladder and all", () => {
@@ -107,6 +152,68 @@ describe("generateRawText", () => {
     expect(generateRawText(d, "kg")).toBe(
       '"Fran"\n21-15-9 reps for time: thruster (95/65 lb), pull-up\nThruster (40 kg)',
     );
+  });
+});
+
+describe("the round grid", () => {
+  const add = (name: string, id: number) => useDraft.getState().addMovement({ id, name });
+  const reps0 = () => useDraft.getState().draft.movements[0].rounds.map((r) => r.reps);
+
+  it("gives a new movement a round for every round of the workout", () => {
+    useDraft.getState().setRounds(3);
+    add("Thruster", 1);
+    expect(reps0()).toHaveLength(3);
+  });
+
+  it("reshapes what is already there when the round count changes", () => {
+    add("Thruster", 1);
+    useDraft.getState().patchRound(useDraft.getState().draft.movements[0].key, 0, { reps: 10 });
+    useDraft.getState().setRounds(4);
+    // A new round copies the one before it, so a uniform workout is typed once.
+    expect(reps0()).toEqual([10, 10, 10, 10]);
+    useDraft.getState().setRounds(2);
+    expect(reps0()).toEqual([10, 10]);
+  });
+
+  it("carries an edit down to the rounds that still agreed with it", () => {
+    useDraft.getState().setRounds(5);
+    add("Pull-up", 1);
+    const k = useDraft.getState().draft.movements[0].key;
+    useDraft.getState().patchRound(k, 0, { reps: 7 });
+    expect(reps0()).toEqual([7, 7, 7, 7, 7]);
+  });
+
+  it("is three edits for a 21-15-9, not nine", () => {
+    useDraft.getState().setRounds(3);
+    add("Thruster", 1);
+    const k = useDraft.getState().draft.movements[0].key;
+    // Each entry sweeps the rounds below it, and each is then corrected in turn.
+    useDraft.getState().patchRound(k, 0, { reps: 21 });
+    expect(reps0()).toEqual([21, 21, 21]);
+    useDraft.getState().patchRound(k, 1, { reps: 15 });
+    expect(reps0()).toEqual([21, 15, 15]);
+    useDraft.getState().patchRound(k, 2, { reps: 9 });
+    expect(reps0()).toEqual([21, 15, 9]);
+  });
+
+  it("never overwrites a round that has been given its own value", () => {
+    useDraft.getState().setRounds(3);
+    add("Thruster", 1);
+    const k = useDraft.getState().draft.movements[0].key;
+    useDraft.getState().patchRound(k, 0, { reps: 21 });
+    useDraft.getState().patchRound(k, 2, { reps: 9 });
+    // Round 3 has stopped agreeing, so going back to round 1 must leave it be.
+    useDraft.getState().patchRound(k, 0, { reps: 20 });
+    expect(reps0()).toEqual([20, 20, 9]);
+  });
+
+  it("collapses to one round for an AMRAP, which repeats until the clock stops", () => {
+    useDraft.getState().setRounds(5);
+    add("Pull-up", 1);
+    expect(roundCount(useDraft.getState().draft)).toBe(5);
+    useDraft.getState().setFormat("amrap");
+    expect(roundCount(useDraft.getState().draft)).toBe(1);
+    expect(reps0()).toHaveLength(1);
   });
 });
 

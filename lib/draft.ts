@@ -17,6 +17,14 @@ export type DraftSet = {
   isFailed: boolean;
 };
 
+/** What one movement does in one round. */
+export type RoundEntry = {
+  reps: number | null;
+  loadG: number | null;
+  distanceM: number | null;
+  calories: number | null;
+};
+
 export type DraftMovement = {
   key: string;
   movementId: number;
@@ -24,12 +32,23 @@ export type DraftMovement = {
   /** Carried from the seed so the form knows to offer metres, not kilos. */
   modality: string | null;
   defaultScoreType: string | null;
-  /** Reps per round, or total for a chipper. */
-  reps: number | null;
-  loadG: number | null;
-  distanceM: number | null;
-  calories: number | null;
+  /**
+   * One entry per round, never empty.
+   *
+   * A round is not always the same work: Fran is three rounds of thrusters at
+   * 21, 15 and 9. Holding a single "reps per round" number could not say that,
+   * which is why this is a list — and it is what lets the grid fill itself in
+   * and then be corrected round by round.
+   */
+  rounds: RoundEntry[];
 };
+
+export const emptyRound = (): RoundEntry => ({
+  reps: null,
+  loadG: null,
+  distanceM: null,
+  calories: null,
+});
 
 export type Draft = {
   date: string;
@@ -97,6 +116,35 @@ const SCORE_TYPE_FOR_FORMAT: Partial<Record<BlockFormat, ScoreType>> = {
   max_effort: "reps",
 };
 
+/**
+ * How many rounds the movement grid shows.
+ *
+ * Only a for-time repeats a fixed number of times. An AMRAP or an EMOM repeats
+ * until the clock stops, so there is one round to describe and the score says
+ * how many of them happened.
+ */
+export function roundCount(d: Draft): number {
+  if (d.kind !== "wod") return 1;
+  const repeats = d.format === "for_time" || d.format === "chipper" || d.format === "intervals";
+  return repeats ? Math.max(1, d.rounds ?? 1) : 1;
+}
+
+/**
+ * Grows or shrinks every movement's rounds to match the count.
+ *
+ * A new round copies the one before it. That is the whole trick: enter round
+ * one and the rest are already right, so a uniform workout is typed once and a
+ * ladder is only corrected where it actually differs.
+ */
+function resizeRounds(movements: DraftMovement[], n: number): DraftMovement[] {
+  return movements.map((m) => {
+    if (m.rounds.length === n) return m;
+    const rounds = m.rounds.slice(0, n);
+    while (rounds.length < n) rounds.push({ ...(rounds[rounds.length - 1] ?? emptyRound()) });
+    return { ...m, rounds };
+  });
+}
+
 let seq = 0;
 const key = () => `k${++seq}`;
 
@@ -152,7 +200,10 @@ type Store = {
     defaultScoreType?: string | null;
   }) => void;
   removeMovement: (k: string) => void;
-  patchMovement: (k: string, p: Partial<DraftMovement>) => void;
+  /** Sets one cell of the round grid. See the implementation for the carry-down rule. */
+  patchRound: (k: string, index: number, p: Partial<RoundEntry>) => void;
+  /** Changes the round count and reshapes every movement to match. */
+  setRounds: (n: number | null) => void;
   addSet: () => void;
   removeSet: (k: string) => void;
   patchSet: (k: string, p: Partial<DraftSet>) => void;
@@ -176,8 +227,8 @@ export const useDraft = create<Store>((set, get) => ({
    * never show both.
    */
   setKind: (k) =>
-    set((s) => ({
-      draft: {
+    set((s) => {
+      const draft: Draft = {
         ...s.draft,
         kind: k,
         format: k === "strength" ? "sets" : "for_time",
@@ -192,12 +243,13 @@ export const useDraft = create<Store>((set, get) => ({
         rounds: k === "wod" ? 1 : null,
         durationMin: null,
         everyMin: null,
-      },
-    })),
+      };
+      return { draft: { ...draft, movements: resizeRounds(draft.movements, roundCount(draft)) } };
+    }),
 
   setFormat: (f) =>
-    set((s) => ({
-      draft: {
+    set((s) => {
+      const draft: Draft = {
         ...s.draft,
         format: f,
         scoreType: SCORE_TYPE_FOR_FORMAT[f] ?? s.draft.scoreType,
@@ -215,8 +267,11 @@ export const useDraft = create<Store>((set, get) => ({
         rounds: f === "for_time" ? (s.draft.rounds ?? 1) : null,
         durationMin: f === "amrap" || f === "emom" ? s.draft.durationMin : null,
         everyMin: f === "emom" ? (s.draft.everyMin ?? 1) : null,
-      },
-    })),
+      };
+      // An AMRAP describes one round however many times you get through it, so
+      // the grid collapses on the way in and reopens on the way back.
+      return { draft: { ...draft, movements: resizeRounds(draft.movements, roundCount(draft)) } };
+    }),
 
   addMovement: (m) =>
     set((s) => ({
@@ -232,10 +287,9 @@ export const useDraft = create<Store>((set, get) => ({
                 name: m.name,
                 modality: m.modality ?? null,
                 defaultScoreType: m.defaultScoreType ?? null,
-                reps: null,
-                loadG: null,
-                distanceM: null,
-                calories: null,
+                // Appears in every round from the moment it is added — a
+                // movement belongs to the workout, not to round one.
+                rounds: Array.from({ length: roundCount(s.draft) }, emptyRound),
               },
             ],
       },
@@ -246,13 +300,41 @@ export const useDraft = create<Store>((set, get) => ({
       draft: { ...s.draft, movements: s.draft.movements.filter((m) => m.key !== k) },
     })),
 
-  patchMovement: (k, p) =>
+  /**
+   * Sets one cell of the grid, and carries the change down to every later round
+   * that still agreed with it.
+   *
+   * This is what makes the grid worth having. Five uniform rounds are typed
+   * once: the change reaches rounds two to five because they all still matched.
+   * A ladder is typed as 21, then 15, then 9 — each entry sweeps the rounds
+   * below it, and each is corrected in turn. A round given its own value has
+   * stopped agreeing, so it is never overwritten again.
+   */
+  patchRound: (k, index, p) =>
     set((s) => ({
       draft: {
         ...s.draft,
-        movements: s.draft.movements.map((m) => (m.key === k ? { ...m, ...p } : m)),
+        movements: s.draft.movements.map((m) => {
+          if (m.key !== k) return m;
+          const before = m.rounds[index];
+          const fields = Object.keys(p) as (keyof RoundEntry)[];
+          return {
+            ...m,
+            rounds: m.rounds.map((r, i) => {
+              if (i === index) return { ...r, ...p };
+              if (i < index) return r;
+              return fields.every((f) => r[f] === before?.[f]) ? { ...r, ...p } : r;
+            }),
+          };
+        }),
       },
     })),
+
+  setRounds: (n) =>
+    set((s) => {
+      const draft = { ...s.draft, rounds: n };
+      return { draft: { ...draft, movements: resizeRounds(draft.movements, roundCount(draft)) } };
+    }),
 
   addSet: () =>
     set((s) => {
@@ -311,22 +393,66 @@ const FORMAT_LABEL: Record<BlockFormat, string> = {
 };
 
 /**
+ * A column of the round grid, written the way a whiteboard writes it: "21" when
+ * every round is the same, "21-15-9" when they are not, null when nothing has
+ * been entered.
+ */
+function ladder(values: (number | null)[]): string | null {
+  if (!values.some((v) => v != null && v > 0)) return null;
+  const shown = values.map((v) => v ?? 0);
+  return shown.every((v) => v === shown[0]) ? String(shown[0]) : shown.join("-");
+}
+
+/**
+ * The one ladder every movement is following, if there is one.
+ *
+ * Fran is 21-15-9 of both movements, and that belongs in the header — "21-15-9
+ * reps for time:" — rather than being repeated against each line. Returns null
+ * when the rounds are uniform, or when the movements ladder independently, in
+ * which case each line carries its own.
+ */
+function sharedLadder(d: Draft): string | null {
+  if (d.movements.length === 0) return null;
+  const each = d.movements.map((m) => ladder(m.rounds.map((r) => r.reps)));
+  const first = each[0];
+  if (!first || !first.includes("-")) return null;
+  return each.every((l) => l === first) ? first : null;
+}
+
+/**
  * Builds the verbatim text from the structured entry, so `raw_text` is always
  * populated without the user typing prose. The moment they edit it by hand,
  * `rawTextDirty` latches and this stops overwriting them.
  */
 export function generateRawText(d: Draft, unit: Unit): string {
+  const shared = sharedLadder(d);
+
   const line = (m: DraftMovement) => {
+    const first = m.rounds[0] ?? emptyRound();
     // A run reads "400 m Run", not "Run (400 m)".
-    if (m.distanceM || m.calories) {
-      const lead = m.distanceM ? formatDistance(m.distanceM) : `${m.calories} cal`;
-      const tail = m.distanceM && m.calories ? ` (${m.calories} cal)` : "";
-      return `${lead} ${m.name}${tail}`;
+    if (first.distanceM || first.calories) {
+      const dist = ladder(m.rounds.map((r) => r.distanceM));
+      const cals = ladder(m.rounds.map((r) => r.calories));
+      const lead = first.distanceM ? `${dist} m` : `${cals} cal`;
+      const tail = first.distanceM && first.calories ? ` (${cals} cal)` : "";
+      // A single unvarying distance is worth spelling properly — "5 km", not
+      // "5000 m". A ladder of them is not; nobody writes "1-0.8-0.4 km".
+      const single =
+        m.rounds.length === 1 && first.distanceM ? formatDistance(first.distanceM) : lead;
+      return `${single} ${m.name}${tail}`;
     }
-    const bits = [m.reps ? String(m.reps) : null, m.name].filter(Boolean).join(" ");
-    const extras: string[] = [];
-    if (m.loadG) extras.push(formatLoad(m.loadG, unit));
-    return extras.length ? `${bits} (${extras.join(", ")})` : bits;
+    // A shared ladder is already in the header; repeating it on every line
+    // reads as a contradiction.
+    const reps = shared ? null : ladder(m.rounds.map((r) => r.reps));
+    const bits = [reps, m.name].filter(Boolean).join(" ");
+    if (!m.rounds.some((r) => r.loadG)) return bits;
+    const uniform = m.rounds.every((r) => r.loadG === first.loadG);
+    const shown = uniform
+      ? formatLoad(first.loadG!, unit)
+      : `${m.rounds
+          .map((r) => (r.loadG != null ? formatLoad(r.loadG, unit).replace(/ (kg|lb)$/, "") : "—"))
+          .join("-")} ${unit}`;
+    return `${bits} (${shown})`;
   };
 
   if (d.kind === "strength") {
@@ -351,14 +477,20 @@ export function generateRawText(d: Draft, unit: Unit): string {
     // Anything the user actually typed — a load, a scaled rep count — is worth
     // keeping alongside it. Bare component names are not: the prescription
     // just listed them.
-    const own = d.movements.filter(
-      (m) => m.reps != null || m.loadG != null || m.distanceM != null || m.calories != null,
+    const own = d.movements.filter((m) =>
+      m.rounds.some((r) => r.reps != null || r.loadG != null || r.distanceM != null || r.calories != null),
     );
     return [`"${d.benchmarkName}"`, d.benchmarkPrescription, ...own.map(line)].join("\n");
   }
 
+  // "21-15-9 reps for time:" beats "3 rounds for time:" when the ladder is what
+  // actually defines the workout.
+  const header = shared
+    ? `${shared} reps ${FORMAT_LABEL[d.format]}:`.trim()
+    : wodHeader(d);
+
   const body = d.movements.map(line).join("\n");
-  return [d.benchmarkName ? `"${d.benchmarkName}"` : "", wodHeader(d), body]
+  return [d.benchmarkName ? `"${d.benchmarkName}"` : "", header, body]
     .filter(Boolean)
     .join("\n");
 }

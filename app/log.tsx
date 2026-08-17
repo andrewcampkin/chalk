@@ -21,13 +21,14 @@ import { DISTANCE_PRESETS, isDistanceMovement, presetLabel } from "../lib/inputs
 import { PrToast } from "../components/PrToast";
 import type { BlockFormat } from "../db/schema";
 import { StageCarousel, StageTrail } from "../components/Stage";
-import { generateRawText, useDraft, wodHeader, type Draft } from "../lib/draft";
+import { generateRawText, roundCount, useDraft, wodHeader, type Draft } from "../lib/draft";
 import {
   appendDigit,
   appendDot,
   backspace,
   bufferToValue,
   displayBuffer,
+  gramsToBuffer,
   type FieldKind,
 } from "../lib/entry";
 import { benchmarkComponentIds, deleteBlock, recentMovementChips, saveDraft, type SavedPr } from "../lib/save";
@@ -175,9 +176,10 @@ export default function LogScreen() {
   const router = useRouter();
   const nav = useNavigation();
   const insets = useSafeAreaInsets();
-  const { draft, unit, load, patch, setKind, setFormat, addMovement, removeMovement, patchMovement, addSet, patchSet, removeSet } =
+  const { draft, unit, load, patch, setKind, setFormat, setRounds, addMovement, removeMovement, patchRound, addSet, patchSet, removeSet } =
     useDraft();
   const format = shownFormat(draft.format);
+  const rounds = roundCount(draft);
 
   // Present when opened from a saved block. Everything else is identical —
   // the same form edits an existing block and creates a new one.
@@ -234,12 +236,16 @@ export default function LogScreen() {
     if (draft.kind === "wod") {
       // The shape fields are deliberately absent: they are answered by the
       // stages, and the pad only ever visits one of them on its own.
-      for (const m of draft.movements) {
-        ids.push(
-          ...(isDistanceMovement(m)
-            ? [`mov:${m.key}:distance`, `mov:${m.key}:calories`]
-            : [`mov:${m.key}:reps`, `mov:${m.key}:load`]),
-        );
+      // Round by round, so Next walks a 21-15-9 in the order you would read it.
+      for (let r = 0; r < rounds; r++) {
+        for (const m of draft.movements) {
+          const base = `mov:${m.key}:${r}`;
+          ids.push(
+            ...(isDistanceMovement(m)
+              ? [`${base}:distance`, `${base}:calories`]
+              : [`${base}:reps`, `${base}:load`]),
+          );
+        }
       }
     } else {
       for (const s of draft.sets) ids.push(`set:${s.key}:reps`, `set:${s.key}:load`);
@@ -250,7 +256,7 @@ export default function LogScreen() {
       else if (draft.scoreType !== "none") ids.push("score");
     }
     return ids;
-  }, [draft.kind, draft.movements, draft.sets, draft.scoreType, format]);
+  }, [draft.kind, draft.movements, draft.sets, draft.scoreType, rounds]);
 
   const activeIndex = active ? fieldOrder.indexOf(active) : -1;
   const isLastField = activeIndex >= 0 && activeIndex === fieldOrder.length - 1;
@@ -298,18 +304,40 @@ export default function LogScreen() {
       else if (id === "rounds") patch({ scoreRounds: value });
       else if (id === "reps") patch({ scoreReps: value });
       // Namespaced because the score has its own "rounds" — the number of
-      // rounds you got is not the number the workout asked for.
-      else if (id === "shape:rounds") patch({ rounds: value });
+      // rounds you got is not the number the workout asked for. Goes through
+      // setRounds so the movement grid grows and shrinks with it.
+      else if (id === "shape:rounds") setRounds(value);
       else if (id === "shape:duration") patch({ durationMin: value });
       else if (id === "shape:every") patch({ everyMin: value });
-      else {
-        const [scope, key, field] = id.split(":");
+      else if (id.startsWith("set:")) {
+        const [, key, field] = id.split(":");
+        patchSet(key, { [FIELD_COLUMN[field] ?? "reps"]: value } as any);
+      } else {
+        // mov:<key>:<round>:<field>
+        const [, key, round, field] = id.split(":");
+        const index = Number(round);
         const column = FIELD_COLUMN[field] ?? "reps";
-        if (scope === "set") patchSet(key, { [column]: value } as any);
-        if (scope === "mov") patchMovement(key, { [column]: value } as any);
+        patchRound(key, index, { [column]: value } as any);
+
+        // The store carries an edit down to every later round that still
+        // agreed with it, and the slots read what they show from the buffers,
+        // so those have to follow. Only rounds below the edited one: rewriting
+        // the buffer being typed into would normalise "4." to "4" mid-entry.
+        const m = useDraft.getState().draft.movements.find((x) => x.key === key);
+        if (m) {
+          setBuf((b) => {
+            const out = { ...b };
+            for (let i = index + 1; i < m.rounds.length; i++) {
+              const v = (m.rounds[i] as any)[column] as number | null;
+              out[`mov:${key}:${i}:${field}`] =
+                field === "load" ? gramsToBuffer(v, unit) : numBuf(v);
+            }
+            return out;
+          });
+        }
       }
     },
-    [fieldKind, patch, patchMovement, patchSet, unit],
+    [fieldKind, patch, patchRound, patchSet, setRounds, unit],
   );
 
   /**
@@ -519,75 +547,87 @@ export default function LogScreen() {
               ))}
             </ChipRow>
 
-            {draft.movements.map((m) => {
-              const distance = isDistanceMovement(m);
-              const ids = distance
-                ? [`mov:${m.key}:distance`, `mov:${m.key}:calories`]
-                : [`mov:${m.key}:reps`, `mov:${m.key}:load`];
-              return (
-                <View key={m.key} onLayout={registerRow(ids)}>
-                  <View style={st.movRow}>
-                    <Pressable onPress={() => removeMovement(m.key)} hitSlop={10} style={st.remove}>
-                      <Ionicons name="close" size={18} color={colors.textFaint} />
-                    </Pressable>
-                    <Text style={st.movName} numberOfLines={1}>{m.name}</Text>
-                    {distance ? (
-                      <>
-                        <Slot
-                          id={`mov:${m.key}:distance`}
-                          label="m"
-                          value={displayBuffer(buf[`mov:${m.key}:distance`] ?? "", "int")}
-                          active={active === `mov:${m.key}:distance`}
-                          onPress={setActive}
-                          wide
-                        />
-                        <Slot
-                          id={`mov:${m.key}:calories`}
-                          label="cal"
-                          value={displayBuffer(buf[`mov:${m.key}:calories`] ?? "", "int")}
-                          active={active === `mov:${m.key}:calories`}
-                          onPress={setActive}
-                        />
-                      </>
-                    ) : (
-                      <>
-                        <Slot
-                          id={`mov:${m.key}:reps`}
-                          label="reps"
-                          value={displayBuffer(buf[`mov:${m.key}:reps`] ?? "", "int")}
-                          active={active === `mov:${m.key}:reps`}
-                          onPress={setActive}
-                        />
-                        <Slot
-                          id={`mov:${m.key}:load`}
-                          label={unit}
-                          value={displayBuffer(buf[`mov:${m.key}:load`] ?? "", "load")}
-                          active={active === `mov:${m.key}:load`}
-                          onPress={setActive}
-                        />
-                      </>
-                    )}
-                  </View>
+            {/* One block per round. Round one is where movements are added and
+                removed; the rest arrive already filled in from it, and are only
+                touched where the workout actually differs — which for a
+                21-15-9 is two numbers per movement, not six. */}
+            {Array.from({ length: rounds }, (_, r) => (
+              <View key={r}>
+                {rounds > 1 && <Text style={st.roundLabel}>Round {r + 1}</Text>}
+                {draft.movements.map((m) => {
+                  const distance = isDistanceMovement(m);
+                  const base = `mov:${m.key}:${r}`;
+                  const entry = m.rounds[r] ?? { reps: null, loadG: null, distanceM: null, calories: null };
+                  const ids = distance
+                    ? [`${base}:distance`, `${base}:calories`]
+                    : [`${base}:reps`, `${base}:load`];
+                  return (
+                    <View key={m.key} onLayout={registerRow(ids)}>
+                      <View style={st.movRow}>
+                        {r === 0 ? (
+                          <Pressable onPress={() => removeMovement(m.key)} hitSlop={10} style={st.remove}>
+                            <Ionicons name="close" size={18} color={colors.textFaint} />
+                          </Pressable>
+                        ) : (
+                          <View style={st.removeSpacer} />
+                        )}
+                        <Text style={st.movName} numberOfLines={1}>{m.name}</Text>
+                        {distance ? (
+                          <>
+                            <Slot
+                              id={`${base}:distance`}
+                              label="m"
+                              value={displayBuffer(buf[`${base}:distance`] ?? "", "int")}
+                              active={active === `${base}:distance`}
+                              onPress={setActive}
+                              wide
+                            />
+                            <Slot
+                              id={`${base}:calories`}
+                              label="cal"
+                              value={displayBuffer(buf[`${base}:calories`] ?? "", "int")}
+                              active={active === `${base}:calories`}
+                              onPress={setActive}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <Slot
+                              id={`${base}:reps`}
+                              label="reps"
+                              value={displayBuffer(buf[`${base}:reps`] ?? "", "int")}
+                              active={active === `${base}:reps`}
+                              onPress={setActive}
+                            />
+                            <Slot
+                              id={`${base}:load`}
+                              label={unit}
+                              value={displayBuffer(buf[`${base}:load`] ?? "", "load")}
+                              active={active === `${base}:load`}
+                              onPress={setActive}
+                            />
+                          </>
+                        )}
+                      </View>
 
-                  {/* 400s and 5ks are most of the running anybody logs. */}
-                  {distance && (
-                    <ChipRow>
-                      {DISTANCE_PRESETS.map((d) => (
-                        <Chip
-                          key={d}
-                          label={presetLabel(d)}
-                          selected={m.distanceM === d}
-                          onPress={() => {
-                            setBuf((b) => ({ ...b, [`mov:${m.key}:distance`]: String(d) }));
-                            patchMovement(m.key, { distanceM: d });
-                          }}
-                        />
-                      ))}
-                    </ChipRow>
-                  )}
-                </View>
-              );
-            })}
+                      {/* 400s and 5ks are most of the running anybody logs. */}
+                      {distance && (
+                        <ChipRow>
+                          {DISTANCE_PRESETS.map((d) => (
+                            <Chip
+                              key={d}
+                              label={presetLabel(d)}
+                              selected={entry.distanceM === d}
+                              onPress={() => commit(`${base}:distance`, String(d))}
+                            />
+                          ))}
+                        </ChipRow>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            ))}
           </>
         ) : (
           <>
@@ -834,6 +874,18 @@ const st = StyleSheet.create({
     paddingVertical: space.xs,
   },
   movName: { flex: 1, color: colors.text, fontSize: t.body, fontWeight: "600" },
+  roundLabel: {
+    color: colors.textFaint,
+    fontSize: t.label,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    paddingBottom: space.xs,
+  },
+  // Keeps the later rounds' names aligned with round one's, where the ✕ is.
+  removeSpacer: { width: 18 + space.xs * 2 },
   hint: {
     color: colors.textFaint,
     fontSize: t.label,

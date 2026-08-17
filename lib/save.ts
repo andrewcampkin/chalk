@@ -228,16 +228,24 @@ async function writeMovementRows(blockId: number, draft: Draft) {
     }
   }
 
+  // One row per movement per round — invariant 4, applied to a WOD. Fran is six
+  // rows, not two, which is what lets 21-15-9 be recorded as the three different
+  // rounds it actually is instead of being flattened to "21 and something".
+  // setNumber is the round; it stays null when there is only one, so a chipper
+  // and an AMRAP look exactly as they always did.
   draft.movements.forEach((m, i) => {
-    rows.push({
-      blockId,
-      movementId: m.movementId,
-      position: i,
-      setNumber: null,
-      loadG: m.loadG,
-      reps: m.reps,
-      distanceM: m.distanceM,
-      calories: m.calories,
+    const many = m.rounds.length > 1;
+    m.rounds.forEach((r, round) => {
+      rows.push({
+        blockId,
+        movementId: m.movementId,
+        position: i,
+        setNumber: many ? round + 1 : null,
+        loadG: r.loadG,
+        reps: r.reps,
+        distanceM: r.distanceM,
+        calories: r.calories,
+      });
     });
   });
 

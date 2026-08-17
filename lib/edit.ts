@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { db } from "./db";
 import { blockMovements, blocks, movements, sessions } from "../db/schema";
-import type { Draft, DraftMovement, DraftSet } from "./draft";
+import { emptyRound, type Draft, type DraftMovement, type DraftSet } from "./draft";
 import { gramsToBuffer, secondsToBuffer } from "./entry";
 import { isDistanceMovement } from "./inputs";
 import type { Unit } from "../db/score";
@@ -58,8 +58,11 @@ export async function draftFromBlock(
   let n = 0;
   const key = () => `e${++n}`;
 
-  const setRows = rows.filter((r: { setNumber: number | null }) => r.setNumber != null);
-  const movementRows = rows.filter((r: { setNumber: number | null }) => r.setNumber == null);
+  // Split on the block's kind, not on setNumber. A WOD now uses setNumber for
+  // the round a movement belongs to, so "has a set number" no longer means
+  // "is a strength set".
+  const setRows = block.kind === "strength" ? rows : [];
+  const movementRows = block.kind === "wod" ? rows : [];
 
   const sets: DraftSet[] = setRows.map((r: any) => {
     const k = key();
@@ -74,28 +77,48 @@ export async function draftFromBlock(
     };
   });
 
-  const draftMovements: DraftMovement[] = movementRows.map((r: any) => {
-    const k = key();
-    const shape = { modality: r.modality, defaultScoreType: r.defaultScoreType };
-    if (isDistanceMovement(shape)) {
-      buffers[`mov:${k}:distance`] = r.distanceM != null ? String(r.distanceM) : "";
-      buffers[`mov:${k}:calories`] = r.calories != null ? String(r.calories) : "";
-    } else {
-      buffers[`mov:${k}:reps`] = r.reps != null ? String(r.reps) : "";
-      buffers[`mov:${k}:load`] = gramsToBuffer(r.loadG, unit);
+  // Rows come back one per movement per round; fold them into a movement with
+  // its rounds in order. Ordered by position then setNumber above, so pushing
+  // in encounter order is already right.
+  const byMovement = new Map<number, DraftMovement>();
+  for (const r of movementRows as any[]) {
+    let m = byMovement.get(r.movementId);
+    if (!m) {
+      m = {
+        key: key(),
+        movementId: r.movementId,
+        name: r.name,
+        modality: r.modality,
+        defaultScoreType: r.defaultScoreType,
+        rounds: [],
+      };
+      byMovement.set(r.movementId, m);
     }
-    return {
-      key: k,
-      movementId: r.movementId,
-      name: r.name,
-      modality: r.modality,
-      defaultScoreType: r.defaultScoreType,
+    m.rounds.push({
       reps: r.reps,
       loadG: r.loadG,
       distanceM: r.distanceM,
       calories: r.calories,
-    };
-  });
+    });
+  }
+
+  const draftMovements: DraftMovement[] = [...byMovement.values()];
+  for (const m of draftMovements) {
+    // A movement tagged by a benchmark carries no numbers at all and would
+    // otherwise come back with no rounds to show.
+    if (!m.rounds.length) m.rounds.push(emptyRound());
+    const distance = isDistanceMovement(m);
+    m.rounds.forEach((r, i) => {
+      const base = `mov:${m.key}:${i}`;
+      if (distance) {
+        buffers[`${base}:distance`] = r.distanceM != null ? String(r.distanceM) : "";
+        buffers[`${base}:calories`] = r.calories != null ? String(r.calories) : "";
+      } else {
+        buffers[`${base}:reps`] = r.reps != null ? String(r.reps) : "";
+        buffers[`${base}:load`] = gramsToBuffer(r.loadG, unit);
+      }
+    });
+  }
 
   const numBuf = (n: number | null) => (n != null ? String(n) : "");
   buffers["shape:rounds"] = numBuf(block.rounds);

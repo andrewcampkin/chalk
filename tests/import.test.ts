@@ -192,6 +192,34 @@ describe("restoring", () => {
     expect(pr.value).toBe(70_000);
   });
 
+  it("restores a ladder round by round", async () => {
+    const thruster = await idOf("thruster");
+    const [s] = await db.insert(sessions).values({ date: "2026-08-08" }).returning();
+    const [b] = await db
+      .insert(blocks)
+      .values({
+        sessionId: s.id, kind: "wod", format: "for_time", rounds: 3,
+        rawText: "21-15-9 reps for time:\nThruster (43 kg)", scoreType: "time", scoreValue: 252,
+      })
+      .returning();
+    // One row per movement per round — invariant 4 applied to a WOD.
+    await db.insert(blockMovements).values(
+      [21, 15, 9].map((reps, i) => ({
+        blockId: b.id, movementId: thruster, position: 0, setNumber: i + 1, reps, loadG: 43_000,
+      })),
+    );
+
+    const doc = await buildExportDoc(db);
+    await importBackup(db, doc);
+
+    const rows = await db
+      .select()
+      .from(blockMovements)
+      .where(eq(blockMovements.movementId, thruster))
+      .orderBy(blockMovements.setNumber);
+    expect(rows.map((r: any) => [r.setNumber, r.reps])).toEqual([[1, 21], [2, 15], [3, 9]]);
+  });
+
   it("restores the workout's shape, so the log form redisplays its dials", async () => {
     const [s] = await db.insert(sessions).values({ date: "2026-08-07" }).returning();
     await db.insert(blocks).values({

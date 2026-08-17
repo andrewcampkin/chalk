@@ -1,0 +1,21 @@
+{
+  "name": "chalk-infra",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AWS resources behind Chalk's cloud backup. Deployed only by the manually-triggered GitHub workflow, never from a developer machine.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "diff": "cdk diff",
+    "deploy": "cdk deploy --require-approval never --progress events"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "aws-cdk": "2.174.1",
+    "tsx": "4.19.2",
+    "typescript": "5.7.2"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.174.1",
+    "constructs": "10.4.2"
+  }
+}

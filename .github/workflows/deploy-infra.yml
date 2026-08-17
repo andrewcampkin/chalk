@@ -1,0 +1,47 @@
+name: Infrastructure
+
+# Manual only. No push, no pull_request, no schedule — merging a PR deploys
+# nothing, and the default action prints a plan rather than changing anything.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to run against AWS
+        type: choice
+        options: [diff, deploy]
+        default: diff
+
+concurrency: chalk-infra
+
+permissions:
+  # Required to mint the short-lived OIDC token. No AWS access key exists in
+  # this repository, in its secrets, or on any developer machine.
+  id-token: write
+  contents: read
+
+jobs:
+  cdk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-southeast-2
+
+      - name: cdk ${{ inputs.action }}
+        run: npm run ${{ inputs.action }}

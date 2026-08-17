@@ -2,7 +2,7 @@ import { eq, inArray } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import { blockMovements, blocks, movements, prs, sessions } from "../db/schema";
 import { rebuildAllPrs } from "../db/queries";
-import { EXPORT_VERSION, type ExportDoc } from "./export";
+import { EXPORT_VERSION, MIN_IMPORT_VERSION, type ExportDoc } from "./export";
 import { tidyName, uniqueSlug } from "./movements";
 
 type DB = BaseSQLiteDatabase<any, any, any>;
@@ -51,12 +51,19 @@ export function parseBackup(text: string): ParseResult {
     return { ok: false, errors: ["This is not a Chalk backup."] };
   }
   const version = Number(raw.version);
-  if (version !== EXPORT_VERSION) {
+  if (!Number.isFinite(version)) {
+    return { ok: false, errors: ["Missing or unreadable version."] };
+  }
+  if (version > EXPORT_VERSION) {
     return {
       ok: false,
-      errors: [
-        `This build reads v${EXPORT_VERSION} backups and the file says v${raw.version ?? "?"}.`,
-      ],
+      errors: [`Made by a newer version of Chalk (file is v${version}, this build reads v${EXPORT_VERSION}).`],
+    };
+  }
+  if (version < MIN_IMPORT_VERSION) {
+    return {
+      ok: false,
+      errors: [`Written by a build too old to restore from (file is v${version}, the oldest readable is v${MIN_IMPORT_VERSION}).`],
     };
   }
 

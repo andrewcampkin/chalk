@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { recomputePrsForBlock } from "../db/queries";
 import { blockMovements, blocks, movements, prs, sessions } from "../db/schema";
-import { buildExportDoc, EXPORT_VERSION } from "../lib/export";
+import { buildExportDoc, EXPORT_VERSION, MIN_IMPORT_VERSION } from "../lib/export";
 import { currentLogSize, importBackup, parseBackup } from "../lib/import";
 import { createCustomMovement } from "../lib/movements";
 import { makeTestDb, seedMovements } from "./helpers";
@@ -76,12 +76,25 @@ describe("validating a backup", () => {
     expect(parseBackup('{"app":"chalk"}')).toMatchObject({ ok: false });
   });
 
-  it("refuses any version but its own", () => {
-    for (const version of [1, 2, 99]) {
-      const res = parseBackup(JSON.stringify({ app: "chalk", version, sessions: [] }));
-      expect(res.ok).toBe(false);
-      if (!res.ok) expect(res.errors[0]).toContain(String(EXPORT_VERSION));
-    }
+  it("refuses a file from a newer build", () => {
+    const res = parseBackup(JSON.stringify({ app: "chalk", version: EXPORT_VERSION + 1, sessions: [] }));
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.errors[0]).toContain("newer version");
+  });
+
+  it("refuses a file older than it can read", () => {
+    const res = parseBackup(
+      JSON.stringify({ app: "chalk", version: MIN_IMPORT_VERSION - 1, sessions: [] }),
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.errors[0]).toContain("too old");
+  });
+
+  it("never leaves a version this build wrote unreadable", () => {
+    // A backup has to survive every later build: the log is the only copy and
+    // there is no server behind it. Raising MIN_IMPORT_VERSION past a version
+    // Chalk has shipped strands whatever was exported by it.
+    expect(MIN_IMPORT_VERSION).toBeLessThanOrEqual(EXPORT_VERSION);
   });
 
   it("refuses a block with no workout text", () => {

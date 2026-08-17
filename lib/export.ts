@@ -4,12 +4,22 @@ import { blockMovements, blocks, movements, sessions } from "../db/schema";
 
 type DB = BaseSQLiteDatabase<any, any, any>;
 
-/**
- * Bumped whenever the document shape changes. Import accepts this version only —
- * no backup written by an earlier build exists, so there is nothing to stay
- * compatible with.
- */
+/** Bumped whenever the document shape changes. */
 export const EXPORT_VERSION = 3;
+
+/**
+ * The oldest document this build can still restore. **3 is the floor for good.**
+ *
+ * Every backup Chalk writes must stay readable by every later build: the log is
+ * the only copy of years of training and there is no server behind it, so a file
+ * a future build refuses is data lost. Bumping EXPORT_VERSION therefore means
+ * keeping a reader for what came before.
+ *
+ * This could be set to 3 at all only because no backup had ever been written
+ * when the v1 and v2 readers were deleted. From v3 on, a file can exist, so
+ * raising this again would strand somebody's log.
+ */
+export const MIN_IMPORT_VERSION = 3;
 
 /**
  * The backup format.

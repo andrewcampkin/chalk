@@ -172,8 +172,12 @@ writing anything, because failing partway leaves a log that is neither the old
 one nor the new one. Benchmarks are looked up, never created; unknown movements
 are created and flagged `isCustom`.
 
-Export is at version 3. Import accepts that version only — no backup written by
-an earlier build exists.
+**A backup must stay restorable by every later build.** The log is the only copy
+of years of training and there is no server behind it, so a file a future build
+refuses is data lost. Bumping `EXPORT_VERSION` means keeping the reader for what
+came before; `MIN_IMPORT_VERSION` is the oldest document that still restores and
+does not move. It equals `EXPORT_VERSION` today only because no backup written
+by an earlier build has ever existed, and that reasoning is spent.
 
 ---
 

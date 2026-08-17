@@ -69,11 +69,11 @@ describe("sample data", () => {
     expect(Math.max(...feels)).toBe(5);
   });
 
-  it("excludes warm-ups from the rep maxes it produces", async () => {
+  it("reports the top single, not a lighter set from the ramp", async () => {
     await loadSampleData(db);
     const maxes = await repMaxes(db, await idOf("back-squat"));
     const single = maxes.find((m: any) => m.reps === 1);
-    // 125kg top single, not a warm-up ramp value.
+    // 125kg top single, not one of the lighter build-up sets.
     expect(single?.loadG).toBe(125_000);
   });
 

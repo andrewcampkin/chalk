@@ -13,7 +13,6 @@ export type DraftSet = {
   key: string;
   reps: number | null;
   loadG: number | null;
-  isWarmup: boolean;
   isFailed: boolean;
 };
 
@@ -74,7 +73,6 @@ export type Draft = {
   strengthMovementId: number | null;
   strengthMovementName: string | null;
   sets: DraftSet[];
-  gridOpen: boolean;
 
   /** WOD: many movements, one score. */
   movements: DraftMovement[];
@@ -96,7 +94,6 @@ export type Draft = {
   capped: boolean;
   /** 1-5, optional. See lib/feel.ts. */
   feel: number | null;
-  notes: string;
 };
 
 /**
@@ -162,8 +159,7 @@ function emptyDraft(kind: "strength" | "wod", date: string): Draft {
     benchmarkPrescription: null,
     strengthMovementId: null,
     strengthMovementName: null,
-    sets: [{ key: key(), reps: null, loadG: null, isWarmup: false, isFailed: false }],
-    gridOpen: false,
+    sets: [{ key: key(), reps: null, loadG: null, isFailed: false }],
     movements: [],
     // One round — a chipper, straight through — is the commonest workout there
     // is, so it is what the Rounds stage opens on rather than a blank.
@@ -178,7 +174,6 @@ function emptyDraft(kind: "strength" | "wod", date: string): Draft {
     scoreReps: null,
     capped: false,
     feel: null,
-    notes: "",
   };
 }
 
@@ -340,7 +335,6 @@ export const useDraft = create<Store>((set, get) => ({
       return {
         draft: {
           ...s.draft,
-          gridOpen: true,
           sets: [
             ...s.draft.sets,
             {
@@ -348,7 +342,6 @@ export const useDraft = create<Store>((set, get) => ({
               // Carry the rep count down the grid so only loads need typing.
               reps: last?.reps ?? null,
               loadG: last?.loadG ?? null,
-              isWarmup: false,
               isFailed: false,
             },
           ],

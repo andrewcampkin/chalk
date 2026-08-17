@@ -60,7 +60,6 @@ export async function saveDraft(
       scoreReps: draft.scoreReps,
       capped: draft.capped,
       feel: draft.feel,
-      notes: draft.notes.trim() || null,
     })
     .returning();
 
@@ -128,7 +127,6 @@ async function updateBlock(draft: Draft, unit: Unit, blockId: number) {
       scoreReps: draft.scoreReps,
       capped: draft.capped,
       feel: draft.feel,
-      notes: draft.notes.trim() || null,
     })
     .where(eq(blocks.id, blockId));
 
@@ -222,8 +220,7 @@ async function writeMovementRows(blockId: number, draft: Draft) {
         setNumber: ++n,
         loadG: s.loadG,
         reps: s.reps,
-        isWarmup: s.isWarmup,
-        isFailed: s.isFailed,
+          isFailed: s.isFailed,
       });
     }
   }

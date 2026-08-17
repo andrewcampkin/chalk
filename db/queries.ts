@@ -81,12 +81,10 @@ export async function blocksForMovement(db: DB, movementId: number, limit = 100)
       feel: blocks.feel,
       /** Heaviest working set of this movement in the block. */
       topLoadG: sql<number | null>`max(
-        case when ${blockMovements.isWarmup} = 0 and ${blockMovements.isFailed} = 0
-        then ${blockMovements.loadG} end
+        case when ${blockMovements.isFailed} = 0 then ${blockMovements.loadG} end
       )`,
       topReps: sql<number | null>`max(
-        case when ${blockMovements.isWarmup} = 0 and ${blockMovements.isFailed} = 0
-        then ${blockMovements.reps} end
+        case when ${blockMovements.isFailed} = 0 then ${blockMovements.reps} end
       )`,
     })
     .from(blockMovements)
@@ -157,7 +155,6 @@ export async function repMaxes(db: DB, movementId: number) {
     join sessions s on s.id = b.session_id
     where bm.movement_id = ${movementId}
       and b.kind = 'strength'
-      and bm.is_warmup = 0
       and bm.is_failed = 0
       and bm.load_g is not null
       and bm.reps   is not null
@@ -194,7 +191,7 @@ export async function topSetsOverTime(db: DB, movementId: number, limit = 200) {
     join sessions s on s.id = b.session_id
     where bm.movement_id = ${movementId}
       and b.kind = 'strength'
-      and bm.is_warmup = 0 and bm.is_failed = 0
+      and bm.is_failed = 0
       and bm.load_g is not null
     group by b.id
     order by s.date asc
@@ -220,7 +217,7 @@ function candidatesForBlock(
   // contribution is the benchmark result below.
   if (block.kind === "strength") {
     for (const set of sets) {
-      if (set.isWarmup || set.isFailed) continue;
+      if (set.isFailed) continue;
       if (set.loadG == null || set.reps == null) continue;
       out.push({
         movementId: set.movementId,
@@ -537,7 +534,6 @@ export async function sessionWithBlocks(db: DB, sessionId: number) {
           setNumber: blockMovements.setNumber,
           loadG: blockMovements.loadG,
           reps: blockMovements.reps,
-          isWarmup: blockMovements.isWarmup,
           isFailed: blockMovements.isFailed,
         })
         .from(blockMovements)

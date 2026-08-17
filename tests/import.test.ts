@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { recomputePrsForBlock } from "../db/queries";
 import { blockMovements, blocks, movements, prs, sessions } from "../db/schema";
-import { buildExportDoc, EXPORT_VERSION } from "../lib/export";
+import { buildExportDoc, EXPORT_VERSION, MIN_IMPORT_VERSION } from "../lib/export";
 import { currentLogSize, importBackup, parseBackup } from "../lib/import";
 import { createCustomMovement } from "../lib/movements";
 import { makeTestDb, seedMovements } from "./helpers";
@@ -40,8 +40,8 @@ async function logRealisticDay() {
     })
     .returning();
   await db.insert(blockMovements).values([
-    { blockId: strength.id, movementId: pc, position: 0, setNumber: 1, loadG: 60_000, reps: 3, isWarmup: true },
-    { blockId: strength.id, movementId: pc, position: 0, setNumber: 2, loadG: 70_000, reps: 3 },
+    { blockId: strength.id, movementId: pc, position: 0, setNumber: 1, loadG: 70_000, reps: 3 },
+    { blockId: strength.id, movementId: pc, position: 0, setNumber: 2, loadG: 80_000, reps: 3, isFailed: true },
   ]);
 
   const [wod] = await db
@@ -76,10 +76,25 @@ describe("validating a backup", () => {
     expect(parseBackup('{"app":"chalk"}')).toMatchObject({ ok: false });
   });
 
-  it("refuses a file from a newer version of the app", () => {
-    const res = parseBackup(JSON.stringify({ app: "chalk", version: 99, sessions: [] }));
+  it("refuses a file from a newer build", () => {
+    const res = parseBackup(JSON.stringify({ app: "chalk", version: EXPORT_VERSION + 1, sessions: [] }));
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.errors[0]).toContain("newer version");
+  });
+
+  it("refuses a file older than it can read", () => {
+    const res = parseBackup(
+      JSON.stringify({ app: "chalk", version: MIN_IMPORT_VERSION - 1, sessions: [] }),
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.errors[0]).toContain("too old");
+  });
+
+  it("never leaves a version this build wrote unreadable", () => {
+    // A backup has to survive every later build: the log is the only copy and
+    // there is no server behind it. Raising MIN_IMPORT_VERSION past a version
+    // Chalk has shipped strands whatever was exported by it.
+    expect(MIN_IMPORT_VERSION).toBeLessThanOrEqual(EXPORT_VERSION);
   });
 
   it("refuses a block with no workout text", () => {
@@ -179,15 +194,15 @@ describe("restoring", () => {
     expect(pr.value).toBe(70_000);
   });
 
-  it("keeps warm-up and failed flags, which PR queries depend on", async () => {
+  it("keeps the failed flag, which PR queries depend on", async () => {
     await logRealisticDay();
     const doc = await buildExportDoc(db);
     await importBackup(db, doc);
 
     const pc = await idOf("power-clean");
     const rows = await db.select().from(blockMovements).where(eq(blockMovements.movementId, pc));
-    expect(rows.filter((r: any) => r.isWarmup)).toHaveLength(1);
-    // The 60kg warm-up must not become the record.
+    expect(rows.filter((r: any) => r.isFailed)).toHaveLength(1);
+    // The failed 80kg attempt must not become the record.
     const [pr] = await db.select().from(prs).where(eq(prs.movementId, pc));
     expect(pr.value).toBe(70_000);
   });
@@ -234,27 +249,10 @@ describe("restoring", () => {
     expect([restored.durationMin, restored.everyMin]).toEqual([15, 3]);
   });
 
-  it("reads a file written before the shape existed", async () => {
-    await logRealisticDay();
-    const doc: any = await buildExportDoc(db);
-    for (const s of doc.sessions) for (const b of s.blocks) delete b.shape;
-
-    const parsed = parseBackup(JSON.stringify(doc));
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-
-    await importBackup(db, parsed.doc);
-    // The header line still says 21-15-9 in words; only the stage's answer is
-    // lost, and the verbatim text is the source of truth anyway.
-    const [wod] = await db.select().from(blocks).where(eq(blocks.title, "Fran"));
-    expect(wod.rounds).toBeNull();
-    expect(wod.rawText).toContain("21-15-9");
-  });
-
   it("rejects a shape that is not a whole count", async () => {
     await logRealisticDay();
     const doc: any = await buildExportDoc(db);
-    doc.sessions[0].blocks[1].shape = { rounds: 2.5, durationMin: null, everyMin: null, repScheme: null };
+    doc.sessions[0].blocks[1].shape = { rounds: 2.5, durationMin: null, everyMin: null };
     expect(parseBackup(JSON.stringify(doc))).toMatchObject({ ok: false });
   });
 
@@ -292,24 +290,6 @@ describe("restoring", () => {
       .where(eq(movements.slug, "burpee-pull-up"));
     expect(restored.name).toBe("Burpee Pull-up");
     expect(restored.isCustom).toBe(true);
-  });
-
-  it("reads a version 1 file, where benchmark was a bare name", async () => {
-    await logRealisticDay();
-    const doc: any = await buildExportDoc(db);
-    doc.version = 1;
-    for (const s of doc.sessions) {
-      for (const b of s.blocks) if (b.benchmark) b.benchmark = b.benchmark.name;
-    }
-
-    const parsed = parseBackup(JSON.stringify(doc));
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    await importBackup(db, parsed.doc);
-
-    const fran = await idOf("fran");
-    const [wod] = await db.select().from(blocks).where(eq(blocks.benchmarkId, fran));
-    expect(wod).toBeTruthy();
   });
 
   it("reports what is about to be replaced", async () => {

@@ -49,7 +49,7 @@ db/
   queries.ts         search, PR derivation, activity rollups
   seed.ts            the movement vocabulary and the benchmark WODs
   migrations/        drizzle-kit generated; migrations.js is the bundled entry
-  sql/fts.sql        FTS5 table + triggers, applied by lib/db.ts every launch
+  sql/fts.sql        FTS5 table + triggers, rebuilt by lib/db.ts every launch
 lib/
   db.ts              opens the database, migrates, applies FTS, seeds once
   draft.ts           the in-progress log (the ONLY Zustand store), and the
@@ -172,8 +172,12 @@ writing anything, because failing partway leaves a log that is neither the old
 one nor the new one. Benchmarks are looked up, never created; unknown movements
 are created and flagged `isCustom`.
 
-Export is at version 2 and import still reads v1, where `benchmark` was a bare
-display name.
+**A backup must stay restorable by every later build.** The log is the only copy
+of years of training and there is no server behind it, so a file a future build
+refuses is data lost. Bumping `EXPORT_VERSION` means keeping the reader for what
+came before; `MIN_IMPORT_VERSION` is the oldest document that still restores and
+does not move. It equals `EXPORT_VERSION` today only because no backup written
+by an earlier build has ever existed, and that reasoning is spent.
 
 ---
 
@@ -181,7 +185,9 @@ display name.
 
 - Run `npx tsc --noEmit` and `npm test` before saying anything is done.
 - Test `score.ts`, `queries.ts`, `draft.ts` and `dates.ts` properly. UI by hand.
-- Migrations are append-only.
+- Migrations are append-only. A migration that drops a column must drop the FTS
+  triggers first — SQLite refuses `DROP COLUMN` while a trigger names it, and
+  `lib/db.ts` rebuilds the triggers straight afterwards.
 - Document only what the app does — not what it might do, what was rejected, or
   what used to be true. Prefer deleting a stale section to updating it.
 - Comments explain **why**. Keep them short. The schema comments are

@@ -250,7 +250,6 @@ export async function loadSampleData(db: DB): Promise<{ sessions: number; blocks
           setNumber: i + 1,
           loadG: Math.round((topKg * f) / 2.5) * 2500,
           reps,
-          isWarmup: true,
         });
       });
       for (let i = 0; i < 3; i++) {

@@ -4,19 +4,22 @@ import { blockMovements, blocks, movements, sessions } from "../db/schema";
 
 type DB = BaseSQLiteDatabase<any, any, any>;
 
+/** Bumped whenever the document shape changes. */
+export const EXPORT_VERSION = 3;
+
 /**
- * 1 — original.
- * 2 — `benchmark` became { slug, name } instead of a bare display name. The
- *     slug is the stable machine key; a display name can be edited, and a
- *     restore that silently failed to re-tag Fran would be worse than one that
- *     refused to run. Import still accepts version 1.
+ * The oldest document this build can still restore. **3 is the floor for good.**
  *
- * `shape` was added to blocks without a version bump, on purpose. It is purely
- * additive and everything in it is already stated in plain words by `rawText`,
- * so a reader that ignores it loses nothing — whereas bumping would make older
- * builds reject the whole file, which is a far worse trade for a nicety.
+ * Every backup Chalk writes must stay readable by every later build: the log is
+ * the only copy of years of training and there is no server behind it, so a file
+ * a future build refuses is data lost. Bumping EXPORT_VERSION therefore means
+ * keeping a reader for what came before.
+ *
+ * This could be set to 3 at all only because no backup had ever been written
+ * when the v1 and v2 readers were deleted. From v3 on, a file can exist, so
+ * raising this again would strand somebody's log.
  */
-export const EXPORT_VERSION = 2;
+export const MIN_IMPORT_VERSION = 3;
 
 /**
  * The backup format.
@@ -35,7 +38,7 @@ export type ExportDoc = {
   version: number;
   exportedAt: string;
   counts: { sessions: number; blocks: number; sets: number; customMovements: number };
-  /** Only the user's own additions — the 156 seeded rows ship with the app. */
+  /** Only the user's own additions; the seeded movements ship with the app. */
   customMovements: {
     slug: string;
     name: string;
@@ -49,7 +52,6 @@ export type ExportDoc = {
 export type ExportSession = {
   date: string;
   label: string | null;
-  notes: string | null;
   blocks: ExportBlock[];
 };
 
@@ -62,9 +64,8 @@ export type ExportBlock = {
   rawText: string;
   format: string;
   /**
-   * The structured echo of the header line, so a restore redisplays the log
-   * form's dials. Null throughout on strength blocks and on anything written
-   * before the dials existed; `rawText` says the same thing in words.
+   * The structured echo of the header line, so a restore redisplays the stages
+   * as they were answered. Null throughout on a strength block.
    */
   shape: {
     rounds: number | null;
@@ -79,8 +80,6 @@ export type ExportBlock = {
     capped: boolean;
   };
   feel: number | null;
-  timeCapSec: number | null;
-  notes: string | null;
   movements: {
     slug: string;
     name: string;
@@ -88,11 +87,8 @@ export type ExportBlock = {
     loadG: number | null;
     reps: number | null;
     distanceM: number | null;
-    durationSec: number | null;
     calories: number | null;
-    isWarmup: boolean;
     isFailed: boolean;
-    note: string | null;
   }[];
 };
 
@@ -113,11 +109,8 @@ export async function buildExportDoc(db: DB, now = new Date()): Promise<ExportDo
       loadG: blockMovements.loadG,
       reps: blockMovements.reps,
       distanceM: blockMovements.distanceM,
-      durationSec: blockMovements.durationSec,
       calories: blockMovements.calories,
-      isWarmup: blockMovements.isWarmup,
       isFailed: blockMovements.isFailed,
-      note: blockMovements.note,
     })
     .from(blockMovements)
     .innerJoin(movements, eq(movements.id, blockMovements.movementId))
@@ -145,7 +138,6 @@ export async function buildExportDoc(db: DB, now = new Date()): Promise<ExportDo
   const exported: ExportSession[] = sessionRows.map((s: any) => ({
     date: s.date,
     label: s.label,
-    notes: s.notes,
     blocks: (blocksBySession.get(s.id) ?? []).map(
       (b: any): ExportBlock => ({
         position: b.position,
@@ -163,8 +155,6 @@ export async function buildExportDoc(db: DB, now = new Date()): Promise<ExportDo
           capped: !!b.capped,
         },
         feel: b.feel,
-        timeCapSec: b.timeCapSec,
-        notes: b.notes,
         movements: (setsByBlock.get(b.id) ?? []).map((m: any) => ({
           slug: m.slug,
           name: m.name,
@@ -172,11 +162,8 @@ export async function buildExportDoc(db: DB, now = new Date()): Promise<ExportDo
           loadG: m.loadG,
           reps: m.reps,
           distanceM: m.distanceM,
-          durationSec: m.durationSec,
           calories: m.calories,
-          isWarmup: !!m.isWarmup,
           isFailed: !!m.isFailed,
-          note: m.note,
         })),
       }),
     ),

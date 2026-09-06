@@ -39,6 +39,8 @@ Follow README "Get it on your phone". Agent notes:
   user has asked for a build and has no `.env` yet, then put the id it prints in
   `.env`.
 - Only the `preview` profile produces an installable APK.
+- Chalk has only ever been run on Android. iOS is untested and there is no iOS
+  build profile; say so if asked rather than assuming it works.
 - Uninstalling the app deletes the log. Never suggest uninstall and reinstall
   without telling the user to export a backup from Settings first.
 

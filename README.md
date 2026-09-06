@@ -36,6 +36,9 @@ thruster and pull-up, so searching "thruster" finds every Fran you have done.
 Chalk is not on the Play Store. You can try it inside Expo Go without building
 anything, or build an APK and install it like any other app.
 
+It has only ever been run on Android. Nothing in it is Android-specific, so it
+would probably work in Expo Go on an iPhone, but nobody has tried.
+
 Both routes need Node 24 and npm 11 or later on your computer. Clone the
 repository and install first:
 

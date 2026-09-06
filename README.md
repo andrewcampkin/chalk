@@ -215,6 +215,13 @@ Bumping `EXPORT_VERSION` means keeping the reader for what came before.
 `MIN_IMPORT_VERSION` is the oldest document that still restores and does not
 move.
 
+## Contributing
+
+Chalk is a personal project, shared so that anyone can run it, read it or build
+on it. It is not taking pull requests or issues, and the licence is permissive
+so that you do not need to ask: fork it and make it yours. Bugs you find and
+features you want are best fixed in your fork.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

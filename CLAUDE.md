@@ -46,6 +46,9 @@ Follow README "Get it on your phone". Agent notes:
 
 ## Changing code
 
+The upstream repository does not take pull requests or issues. Work in the
+user's fork and never propose opening a pull request against upstream.
+
 - The rules under README "The data model" are load-bearing. Breaking one
   corrupts the log silently, which is worse than a crash.
 - Migrations are append-only, generated with `npm run db:generate`. A migration

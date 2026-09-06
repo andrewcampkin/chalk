@@ -33,11 +33,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "95c4dab4-9e82-465c-a04a-33c0aab89a51"
-      }
-    },
-    "owner": "andrewcampkin"
+      "router": {}
+    }
   }
 }

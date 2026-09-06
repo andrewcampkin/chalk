@@ -1,8 +1,8 @@
 # infra
 
-The AWS resources behind Chalk's cloud backup: an S3 bucket, a Cognito user
-pool, and one Lambda behind an HTTP API that rejects anything without a valid
-token before the function runs.
+The AWS resources for Chalk's cloud backup: an S3 bucket, a Cognito user pool,
+and one Lambda behind an HTTP API that rejects anything without a valid token
+before the function runs. The app does not currently call it.
 
 No part of this ships in the app. Metro, EAS, vitest and the app's tsconfig all
 exclude it.
@@ -10,19 +10,21 @@ exclude it.
 Deployed only by **Actions ▸ Infrastructure ▸ Run workflow**, which is manual
 and defaults to `diff`. Nothing deploys on push or merge.
 
-Run `diff` and read it before every `deploy`. That is the approval step — CDK
+Run `diff` and read it before every `deploy`. That is the approval step: CDK
 cannot prompt on a headless runner, so `deploy` passes `--require-approval
-never` and the judgement happens when a human reads the plan. A diff proposing
-to **replace or destroy** the bucket or the user pool is a stop sign: both are
-`RETAIN`, so CloudFormation will orphan rather than delete them, but a
-replacement still points the app at empty storage.
+never`. A diff proposing to **replace or destroy** the bucket or the user pool
+is a stop sign. Both are `RETAIN`, so CloudFormation will orphan rather than
+delete them, but a replacement still points the app at empty storage.
+
+The region is pinned to `ap-southeast-2` in `bin/chalk.ts` and in the workflow.
+Change both to deploy elsewhere.
 
 ## One-time setup
 
 Run by a human with real credentials. The workflow cannot do any of it: the
 role it assumes is the thing being created here.
 
-**0. Bootstrap CDK** for the account and region:
+**Bootstrap CDK** for the account and region:
 
 ```bash
 npm ci
@@ -30,14 +32,13 @@ npx cdk bootstrap aws://ACCOUNT_ID/ap-southeast-2
 ```
 
 This creates the `cdk-hnb659fds-*` roles the deploy role is allowed to assume.
-Note that by default the CloudFormation execution role it creates carries
-`AdministratorAccess` — that, not the GitHub role, is the real ceiling on what a
-deploy can do. `--cloudformation-execution-policies` narrows it if that matters
-more than future stack changes working without attention.
+By default the CloudFormation execution role it creates carries
+`AdministratorAccess`. That, not the GitHub role, is the ceiling on what a
+deploy can do; `--cloudformation-execution-policies` narrows it.
 
-**1. Let GitHub assume a deploy role.** Create the OIDC provider once
+**Let GitHub assume a deploy role.** Create the OIDC provider once
 (`token.actions.githubusercontent.com`, audience `sts.amazonaws.com`), then a
-role trusting only this repository:
+role trusting only your fork of this repository:
 
 ```json
 {
@@ -48,7 +49,7 @@ role trusting only this repository:
     "Action": "sts:AssumeRoleWithWebIdentity",
     "Condition": {
       "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
-      "StringLike": { "token.actions.githubusercontent.com:sub": "repo:andrewcampkin/chalk:*" }
+      "StringLike": { "token.actions.githubusercontent.com:sub": "repo:OWNER/REPO:*" }
     }
   }]
 }
@@ -68,12 +69,12 @@ workflow cannot reach the rest of the account:
 }
 ```
 
-Put the role ARN in the repository variable `AWS_DEPLOY_ROLE_ARN` (a variable,
-not a secret — an ARN names a role, it does not grant anything).
+Put the role ARN in the repository variable `AWS_DEPLOY_ROLE_ARN`. It is a
+variable, not a secret: an ARN names a role, it does not grant anything.
 
-**2. Merge the workflow to `main`.** GitHub only offers *Run workflow* for a
-`workflow_dispatch` file that exists on the default branch. Merging is safe:
-there is no push or pull_request trigger, so nothing deploys.
+**Merge the workflow to `main`.** GitHub only offers *Run workflow* for a
+`workflow_dispatch` file that exists on the default branch. There is no push or
+pull_request trigger, so merging deploys nothing.
 
 ## Adding a user
 
@@ -89,8 +90,8 @@ aws cognito-idp admin-create-user \
 ```
 
 If sign-in then reports the account needs a password change, clear the state
-once — the app never uses a password, but Cognito can leave a newly created
-user waiting for one:
+once. The app never uses a password, but Cognito can leave a newly created user
+waiting for one:
 
 ```bash
 aws cognito-idp admin-set-user-password \
@@ -108,10 +109,9 @@ aws cloudformation describe-stacks --stack-name ChalkSync \
   --region ap-southeast-2 --query 'Stacks[0].Outputs' --output table
 ```
 
-Those four go into the app's `app.json` under `extra`. None is a secret — they
-name the app, they do not authorise anything.
+None is a secret. They name the deployment, they do not authorise anything.
 
-Worth confirming the front door is shut:
+Confirm the front door is shut:
 
 ```bash
 curl -i https://API_ID.execute-api.ap-southeast-2.amazonaws.com/sync
@@ -125,6 +125,3 @@ npm ci
 npm run typecheck
 npx cdk synth      # no AWS credentials needed
 ```
-
-`npx cdk deploy` from a laptop is possible but is not how this is meant to
-reach AWS.

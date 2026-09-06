@@ -73,14 +73,18 @@ The package is `eas-cli` and its binary is `eas`. Do not run `npx eas`: an
 unrelated placeholder package called `eas` exists on npm, and npx fetches that
 instead. Use `npx eas-cli` if you would rather not install it globally.
 
-`app.json` names the maintainer's Expo account. Point it at yours by deleting
-the `owner` field and the `extra.eas.projectId` field, then let EAS register
-the project:
+Register the project with your Expo account. The project id is not committed:
+`app.config.js` reads it from a `.env` file at the repository root, which git
+ignores. `eas init` cannot write into a dynamic config, so it prints the id
+for you to put there:
 
 ```bash
 eas init
+echo "EAS_PROJECT_ID=<the id eas init printed>" > .env
 eas build --platform android --profile preview
 ```
+
+Without that file, `eas` stops with "EAS project not configured".
 
 The build prints a link. Open it on the phone, download the APK and install it,
 allowing "install unknown apps" for whichever app opens it.

@@ -1,6 +1,0 @@
-{
-  "app": "npx tsx bin/chalk.ts",
-  "context": {
-    "@aws-cdk/core:newStyleStackSynthesis": true
-  }
-}

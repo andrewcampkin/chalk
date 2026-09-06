@@ -1,3 +1,0 @@
-# The AWS stack is deployed by .github/workflows/deploy-infra.yml and is no
-# part of the app. Keep it out of the build upload.
-infra/

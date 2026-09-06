@@ -161,7 +161,6 @@ app/               expo-router screens; log.tsx is the entry form
 components/        Chip, Button, Keypad, the staged setup, the movement picker
 tests/             vitest, run against the real generated migration
 scripts/           make-icons.mjs draws the app icon; run with npm run icons
-infra/             the AWS stack for cloud backup, with its own README
 ```
 
 ### The data model

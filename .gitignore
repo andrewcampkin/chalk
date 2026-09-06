@@ -9,8 +9,6 @@ dist/
 
 expo-env.d.ts
 # @end expo-cli
-# CDK synthesis output.
-cdk.out/
 
 # Editor and assistant state that belongs to one machine.
 .vscode/

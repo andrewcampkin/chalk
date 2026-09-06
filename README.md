@@ -208,3 +208,7 @@ A backup written by any build must stay restorable by every later build.
 Bumping `EXPORT_VERSION` means keeping the reader for what came before.
 `MIN_IMPORT_VERSION` is the oldest document that still restores and does not
 move.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
